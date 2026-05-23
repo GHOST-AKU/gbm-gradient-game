@@ -337,6 +337,7 @@ function fitCanvas() {
   canvas.width = Math.max(320, Math.floor(rect.width * scale));
   canvas.height = Math.max(260, Math.floor(rect.height * scale));
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.imageSmoothingEnabled = false;
   draw();
 }
 
@@ -381,29 +382,25 @@ function draw() {
 }
 
 function drawBackdrop(rect, bounds) {
-  const gradient = ctx.createLinearGradient(0, bounds.top, 0, bounds.bottom);
-  gradient.addColorStop(0, "rgba(85, 199, 247, 0.08)");
-  gradient.addColorStop(1, "rgba(53, 215, 163, 0.02)");
-  ctx.fillStyle = gradient;
+  ctx.fillStyle = "#07101c";
   ctx.fillRect(0, 0, rect.width, rect.height);
-
-  ctx.fillStyle = "rgba(248, 242, 231, 0.025)";
+  ctx.fillStyle = "rgba(34, 240, 164, 0.04)";
   ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
 }
 
 function drawGrid(bounds) {
   ctx.save();
-  ctx.strokeStyle = "rgba(248,242,231,0.08)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(139,211,255,0.14)";
+  ctx.lineWidth = 2;
   for (let i = 0; i <= 4; i += 1) {
-    const y = bounds.top + (bounds.height / 4) * i;
+    const y = Math.round(bounds.top + (bounds.height / 4) * i) + 0.5;
     ctx.beginPath();
     ctx.moveTo(bounds.left, y);
     ctx.lineTo(bounds.right, y);
     ctx.stroke();
   }
   for (let i = 0; i <= 8; i += 1) {
-    const x = bounds.left + (bounds.width / 8) * i;
+    const x = Math.round(bounds.left + (bounds.width / 8) * i) + 0.5;
     ctx.beginPath();
     ctx.moveTo(x, bounds.top);
     ctx.lineTo(x, bounds.bottom);
@@ -414,15 +411,15 @@ function drawGrid(bounds) {
 
 function drawAxes(bounds, view) {
   ctx.save();
-  ctx.strokeStyle = "rgba(248,242,231,0.25)";
-  ctx.fillStyle = "rgba(248,242,231,0.62)";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(255,243,214,0.58)";
+  ctx.fillStyle = "rgba(255,243,214,0.72)";
+  ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(bounds.left, bounds.top);
   ctx.lineTo(bounds.left, bounds.bottom);
   ctx.lineTo(bounds.right, bounds.bottom);
   ctx.stroke();
-  ctx.font = "12px Segoe UI, Microsoft YaHei, sans-serif";
+  ctx.font = "12px Courier New, Microsoft YaHei, monospace";
   ctx.fillText(view === "loss" ? "训练轮次" : "特征 x", bounds.right - 58, bounds.bottom + 30);
   ctx.save();
   ctx.translate(bounds.left - 38, bounds.top + 92);
@@ -447,7 +444,8 @@ function drawResidualPanel(bounds) {
     ...targetPoints.map((point, index) => Math.abs(point.y - state.predictions[index])),
   );
   ctx.save();
-  ctx.strokeStyle = "rgba(248,242,231,0.28)";
+  ctx.strokeStyle = "rgba(255,243,214,0.42)";
+  ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(bounds.left, zero);
   ctx.lineTo(bounds.right, zero);
@@ -457,15 +455,13 @@ function drawResidualPanel(bounds) {
     const x = px(point, bounds);
     const y = zero - (residual / maxResidual) * (bounds.height * 0.42);
     ctx.strokeStyle = residual >= 0 ? "#ff7868" : "#35d7a3";
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 8;
     ctx.beginPath();
     ctx.moveTo(x, zero);
     ctx.lineTo(x, y);
     ctx.stroke();
-    ctx.fillStyle = "#f4c95d";
-    ctx.beginPath();
-    ctx.arc(x, y, 4, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = "#ffd447";
+    ctx.fillRect(x - 5, y - 5, 10, 10);
   });
   drawPanelTitle(bounds, "残差越接近中线，模型越接近目标");
   ctx.restore();
@@ -480,7 +476,8 @@ function drawLearnerPanel(bounds) {
   const zero = bounds.top + bounds.height / 2;
   const maxValue = Math.max(0.12, ...state.lastLearner.map((value) => Math.abs(value)));
   ctx.save();
-  ctx.strokeStyle = "rgba(248,242,231,0.28)";
+  ctx.strokeStyle = "rgba(255,243,214,0.42)";
+  ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(bounds.left, zero);
   ctx.lineTo(bounds.right, zero);
@@ -489,7 +486,7 @@ function drawLearnerPanel(bounds) {
     const x = px(targetPoints[index], bounds);
     const y = zero - (value / maxValue) * (bounds.height * 0.38);
     ctx.strokeStyle = value >= 0 ? "#35d7a3" : "#ff7868";
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 9;
     ctx.beginPath();
     ctx.moveTo(x, zero);
     ctx.lineTo(x, y);
@@ -509,16 +506,17 @@ function drawLoss(bounds) {
   const toY = (value) => bounds.bottom - ((value - min) / Math.max(max - min, 0.0001)) * bounds.height;
   ctx.save();
   const targetY = toY(levels[currentLevel].target);
-  ctx.strokeStyle = "rgba(244,201,93,0.7)";
-  ctx.setLineDash([6, 6]);
+  ctx.strokeStyle = "rgba(255,212,71,0.85)";
+  ctx.setLineDash([8, 6]);
+  ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(bounds.left, targetY);
   ctx.lineTo(bounds.right, targetY);
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.strokeStyle = "#55c7f7";
-  ctx.lineWidth = 4;
-  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#3bd7ff";
+  ctx.lineWidth = 5;
+  ctx.lineJoin = "miter";
   ctx.beginPath();
   values.forEach((value, index) => {
     const x = toX(index);
@@ -528,10 +526,8 @@ function drawLoss(bounds) {
   });
   ctx.stroke();
   values.forEach((value, index) => {
-    ctx.fillStyle = "#55c7f7";
-    ctx.beginPath();
-    ctx.arc(toX(index), toY(value), 4, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = "#3bd7ff";
+    ctx.fillRect(toX(index) - 4, toY(value) - 4, 8, 8);
   });
   drawPanelTitle(bounds, `虚线是本关通关线：MSE ${levels[currentLevel].target.toFixed(3)}`);
   ctx.restore();
@@ -539,10 +535,13 @@ function drawLoss(bounds) {
 
 function drawPanelTitle(bounds, text) {
   ctx.save();
-  ctx.fillStyle = "rgba(16,18,22,0.76)";
+  ctx.fillStyle = "#08111d";
   ctx.fillRect(bounds.left + 12, bounds.top + 12, Math.min(bounds.width - 24, 430), 34);
-  ctx.fillStyle = "#f8f2e7";
-  ctx.font = "14px Segoe UI, Microsoft YaHei, sans-serif";
+  ctx.strokeStyle = "#22f0a4";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(bounds.left + 12, bounds.top + 12, Math.min(bounds.width - 24, 430), 34);
+  ctx.fillStyle = "#fff3d6";
+  ctx.font = "14px Courier New, Microsoft YaHei, monospace";
   ctx.fillText(text, bounds.left + 24, bounds.top + 34);
   ctx.restore();
 }
@@ -552,25 +551,20 @@ function drawTargets(bounds) {
   targetPoints.forEach((point) => {
     const x = px(point, bounds);
     const y = py(point.y, bounds);
-    ctx.fillStyle = "rgba(244,201,93,0.18)";
-    ctx.beginPath();
-    ctx.arc(x, y, 11, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#f4c95d";
-    ctx.strokeStyle = "rgba(12,16,22,0.72)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
+    ctx.fillStyle = "rgba(255,212,71,0.2)";
+    ctx.fillRect(x - 10, y - 10, 20, 20);
+    ctx.fillStyle = "#05060c";
+    ctx.fillRect(x - 7, y - 7, 14, 14);
+    ctx.fillStyle = "#ffd447";
+    ctx.fillRect(x - 5, y - 5, 10, 10);
   });
   ctx.restore();
 }
 
 function drawResiduals(bounds) {
   ctx.save();
-  ctx.strokeStyle = "rgba(255,120,104,0.68)";
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255,95,87,0.86)";
+  ctx.lineWidth = 3;
   targetPoints.forEach((point, index) => {
     const x = px(point, bounds);
     const y1 = py(state.predictions[index], bounds);
@@ -586,13 +580,13 @@ function drawResiduals(bounds) {
 function drawPrediction(bounds, values, color, width, glow) {
   ctx.save();
   if (glow) {
-    ctx.shadowColor = "rgba(85,199,247,0.36)";
-    ctx.shadowBlur = 12;
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
   }
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "square";
   ctx.beginPath();
   targetPoints.forEach((point, index) => {
     const x = px(point, bounds);
@@ -608,7 +602,7 @@ function drawLearner(bounds) {
   const rate = Number(learningRate.value);
   const learnerProjection = state.predictions.map((prediction, index) => prediction - rate * state.lastLearner[index]);
   const shifted = learnerProjection.map((prediction, index) => prediction + state.lastLearner[index]);
-  drawPrediction(bounds, shifted, "rgba(53,215,163,0.72)", 2.4, false);
+  drawPrediction(bounds, shifted, "rgba(34,240,164,0.9)", 3, false);
 }
 
 learningRate.addEventListener("input", updateHud);
