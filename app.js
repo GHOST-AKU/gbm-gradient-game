@@ -151,6 +151,7 @@ function resetGame() {
     round: 0,
     bestMse: Number.POSITIVE_INFINITY,
     mseHistory: [],
+    completedRound: null,
     overfit: 0,
     lastOverfitNoise: null,
   };
@@ -237,6 +238,7 @@ function trainStep() {
     round: state.round,
     bestMse: state.bestMse,
     mseHistory: [...state.mseHistory],
+    completedRound: state.completedRound,
     overfit: state.overfit,
     lastOverfitNoise: state.lastOverfitNoise ? [...state.lastOverfitNoise] : null,
   });
@@ -246,6 +248,9 @@ function trainStep() {
   state.round = nextRound;
   state.bestMse = Math.min(state.bestMse, after);
   state.mseHistory.push(after);
+  if (after <= levels[currentLevel].target && state.completedRound === null && !shouldOverfit) {
+    state.completedRound = state.round;
+  }
   state.lastOverfitNoise = overfitNoise;
   state.overfit = shouldOverfit ? Math.min(1, state.overfit + 0.2 + overfitRisk * 0.25) : Math.max(0, state.overfit - 0.08);
 
@@ -264,7 +269,7 @@ function trainStep() {
   updateHud();
 
   if (after <= levels[currentLevel].target && !shouldOverfit) {
-    toast.textContent = `通关！这一关目标 MSE ${levels[currentLevel].target.toFixed(3)}，你用 ${state.round} 棵弱树达成了。`;
+    toast.textContent = `通关！这一关目标 MSE ${levels[currentLevel].target.toFixed(3)}，你用 ${state.completedRound} 棵弱树达成了。`;
     stopAuto();
   } else if (autoTimer && state.round > 5 && improvement < 0.00001) {
     toast.textContent = "模型进入平台期：换观察方式看看卡在残差、弱树贡献，还是误差下降曲线。";
@@ -284,6 +289,7 @@ function undoStep() {
   state.round = previous.round;
   state.bestMse = previous.bestMse;
   state.mseHistory = previous.mseHistory;
+  state.completedRound = previous.completedRound;
   state.overfit = previous.overfit;
   state.lastOverfitNoise = previous.lastOverfitNoise;
   roundLog.firstElementChild?.remove();
