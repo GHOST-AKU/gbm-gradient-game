@@ -151,6 +151,8 @@ function resetGame() {
     round: 0,
     bestMse: Number.POSITIVE_INFINITY,
     mseHistory: [],
+    overfit: 0,
+    lastOverfitNoise: null,
   };
   roundLog.innerHTML = "";
   logCard.classList.remove("has-logs");
@@ -194,12 +196,38 @@ function buildWeakLearner(segments) {
   return learner.map((value) => (Number.isFinite(value) ? value : 0));
 }
 
+function calcOverfitRisk(rate, segments, nextRound) {
+  const rateRisk = Math.max(0, (rate - 0.42) / 0.38);
+  const depthRisk = Math.max(0, (segments - 5) / 3);
+  const roundRisk = Math.max(0, (nextRound - 4) / 8);
+  return Math.min(1, rateRisk * 0.45 + depthRisk * 0.35 + roundRisk * 0.2);
+}
+
+function buildOverfitNoise(risk, nextRound) {
+  const amplitude = risk * (0.025 + Math.min(nextRound, 14) * 0.003);
+  return targetPoints.map((point, index) => {
+    const wave = Math.sin((index + 1) * 3.9 + nextRound * 1.7);
+    const zigzag = index % 2 === 0 ? 1 : -1;
+    return (wave * 0.55 + zigzag * 0.45) * amplitude;
+  });
+}
+
+function clampPrediction(value) {
+  return Math.max(0.02, Math.min(0.98, value));
+}
+
 function trainStep() {
   const rate = Number(learningRate.value);
   const segments = Number(treeDepth.value);
   const before = calcMse();
   const learner = buildWeakLearner(segments);
-  const nextPredictions = state.predictions.map((prediction, index) => prediction + rate * learner[index]);
+  const nextRound = state.round + 1;
+  const overfitRisk = calcOverfitRisk(rate, segments, nextRound);
+  const shouldOverfit = rate >= 0.52 && segments >= 6 && nextRound >= 3;
+  const overfitNoise = shouldOverfit ? buildOverfitNoise(overfitRisk, nextRound) : null;
+  const nextPredictions = state.predictions.map((prediction, index) =>
+    clampPrediction(prediction + rate * learner[index] + (overfitNoise ? overfitNoise[index] : 0)),
+  );
   const after = calcMse(nextPredictions);
 
   state.history.push({
@@ -209,23 +237,33 @@ function trainStep() {
     round: state.round,
     bestMse: state.bestMse,
     mseHistory: [...state.mseHistory],
+    overfit: state.overfit,
+    lastOverfitNoise: state.lastOverfitNoise ? [...state.lastOverfitNoise] : null,
   });
   state.lastBefore = [...state.predictions];
   state.predictions = nextPredictions;
   state.lastLearner = learner;
-  state.round += 1;
+  state.round = nextRound;
   state.bestMse = Math.min(state.bestMse, after);
   state.mseHistory.push(after);
+  state.lastOverfitNoise = overfitNoise;
+  state.overfit = shouldOverfit ? Math.min(1, state.overfit + 0.2 + overfitRisk * 0.25) : Math.max(0, state.overfit - 0.08);
 
   const improvement = Math.max(0, before - after);
   toast.textContent = `第 ${state.round} 轮：小树拟合残差，模型按学习率 ${rate.toFixed(
     2,
   )} 前进，误差下降 ${improvement.toFixed(4)}。`;
   prependLog(`第 ${state.round} 棵树 | ${segments} 段 | MSE ${before.toFixed(4)} 至 ${after.toFixed(4)}`);
+  if (shouldOverfit) {
+    toast.textContent = `OVERFIT MODE：你把噪声也学进去了。学习率 ${rate.toFixed(2)} + ${segments} 段弱树让曲线开始乱抖。`;
+    if (roundLog.firstElementChild) {
+      roundLog.firstElementChild.textContent = `过拟合警报 | 第 ${state.round} 棵树 | 噪声抖动 | MSE ${before.toFixed(4)} 至 ${after.toFixed(4)}`;
+    }
+  }
   draw();
   updateHud();
 
-  if (after <= levels[currentLevel].target) {
+  if (after <= levels[currentLevel].target && !shouldOverfit) {
     toast.textContent = `通关！这一关目标 MSE ${levels[currentLevel].target.toFixed(3)}，你用 ${state.round} 棵弱树达成了。`;
     stopAuto();
   } else if (autoTimer && state.round > 5 && improvement < 0.00001) {
@@ -246,6 +284,8 @@ function undoStep() {
   state.round = previous.round;
   state.bestMse = previous.bestMse;
   state.mseHistory = previous.mseHistory;
+  state.overfit = previous.overfit;
+  state.lastOverfitNoise = previous.lastOverfitNoise;
   roundLog.firstElementChild?.remove();
   if (!roundLog.children.length) logCard.classList.remove("has-logs");
   toast.textContent = "撤回上一棵弱学习器，回到上一轮模型。";
@@ -276,6 +316,7 @@ function updateHud() {
   progressFill.style.width = `${Math.round(score * 100)}%`;
   rateLabel.textContent = Number(learningRate.value).toFixed(2);
   depthLabel.textContent = `${treeDepth.value} 段`;
+  document.body.classList.toggle("overfit-mode", state.overfit > 0.15);
 }
 
 function stopAuto() {
@@ -433,8 +474,26 @@ function drawAxes(bounds, view) {
 function drawModelPanel(bounds) {
   drawResiduals(bounds);
   if (state.lastLearner) drawLearner(bounds);
+  if (state.overfit > 0) drawOverfitGlitch(bounds);
   drawPrediction(bounds, state.predictions, "#55c7f7", 4.5, true);
   drawTargets(bounds);
+}
+
+function drawOverfitGlitch(bounds) {
+  const strength = Math.max(0.25, state.overfit);
+  const jittered = state.predictions.map((value, index) => {
+    const shake = (state.lastOverfitNoise?.[index] || 0) * 1.8;
+    const scan = Math.sin(index * 5.2 + state.round) * 0.018 * strength;
+    return clampPrediction(value + shake + scan);
+  });
+  drawPrediction(bounds, jittered, "rgba(255,95,87,0.9)", 3, false);
+  ctx.save();
+  ctx.fillStyle = "rgba(255,95,87,0.18)";
+  for (let i = 0; i < 7; i += 1) {
+    const y = bounds.top + ((i * 37 + state.round * 11) % Math.max(1, bounds.height));
+    ctx.fillRect(bounds.left, y, bounds.width, 3);
+  }
+  ctx.restore();
 }
 
 function drawResidualPanel(bounds) {

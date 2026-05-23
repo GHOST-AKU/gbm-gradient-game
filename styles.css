@@ -209,6 +209,27 @@ canvas {
   box-shadow: 4px 4px 0 var(--pixel-shadow);
 }
 
+.overfit-mode .toast {
+  border-color: var(--danger);
+  color: #ffe0d6;
+  animation: warning-jitter 220ms steps(2, end) infinite;
+}
+
+.overfit-mode .canvas-wrap {
+  border-color: var(--danger);
+}
+
+@keyframes warning-jitter {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+
+  50% {
+    transform: translate(2px, 0);
+  }
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;
