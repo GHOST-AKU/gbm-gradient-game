@@ -6,6 +6,14 @@ const progressFill = document.querySelector("#progressFill");
 const toast = document.querySelector("#toast");
 const roundLog = document.querySelector("#roundLog");
 const logCard = document.querySelector(".log-card");
+const expandLogBtn = document.querySelector("#expandLogBtn");
+const logOverlay = document.querySelector("#logOverlay");
+const closeLogBtn = document.querySelector("#closeLogBtn");
+const fullRoundLog = document.querySelector("#fullRoundLog");
+const modalEmptyLog = document.querySelector("#modalEmptyLog");
+const modalRoundLabel = document.querySelector("#modalRoundLabel");
+const modalBestLabel = document.querySelector("#modalBestLabel");
+const modalLevelLabel = document.querySelector("#modalLevelLabel");
 const bestLabel = document.querySelector("#bestLabel");
 const targetLabel = document.querySelector("#targetLabel");
 const missionText = document.querySelector("#missionText");
@@ -151,11 +159,13 @@ function resetGame() {
     round: 0,
     bestMse: Number.POSITIVE_INFINITY,
     mseHistory: [],
+    logEntries: [],
     completedRound: null,
     overfit: 0,
     lastOverfitNoise: null,
   };
   roundLog.innerHTML = "";
+  fullRoundLog.innerHTML = "";
   logCard.classList.remove("has-logs");
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
@@ -238,6 +248,7 @@ function trainStep() {
     round: state.round,
     bestMse: state.bestMse,
     mseHistory: [...state.mseHistory],
+    logEntries: [...state.logEntries],
     completedRound: state.completedRound,
     overfit: state.overfit,
     lastOverfitNoise: state.lastOverfitNoise ? [...state.lastOverfitNoise] : null,
@@ -289,24 +300,62 @@ function undoStep() {
   state.round = previous.round;
   state.bestMse = previous.bestMse;
   state.mseHistory = previous.mseHistory;
+  state.logEntries = previous.logEntries;
   state.completedRound = previous.completedRound;
   state.overfit = previous.overfit;
   state.lastOverfitNoise = previous.lastOverfitNoise;
-  roundLog.firstElementChild?.remove();
-  if (!roundLog.children.length) logCard.classList.remove("has-logs");
+  renderLogLists();
   toast.textContent = "撤回上一棵弱学习器，回到上一轮模型。";
   draw();
   updateHud();
 }
 
 function prependLog(message) {
-  const item = document.createElement("li");
-  item.textContent = message;
-  roundLog.prepend(item);
-  logCard.classList.add("has-logs");
-  while (roundLog.children.length > 7) {
-    roundLog.lastElementChild.remove();
-  }
+  state.logEntries.unshift(message);
+  renderLogLists();
+}
+
+function renderLogLists() {
+  const hasLogs = state.logEntries.length > 0;
+  logCard.classList.toggle("has-logs", hasLogs);
+  roundLog.innerHTML = "";
+  fullRoundLog.innerHTML = "";
+
+  state.logEntries.slice(0, 7).forEach((message) => {
+    const item = document.createElement("li");
+    item.textContent = message;
+    roundLog.append(item);
+  });
+
+  state.logEntries.forEach((message) => {
+    const item = document.createElement("li");
+    item.textContent = message;
+    fullRoundLog.append(item);
+  });
+
+  modalEmptyLog.hidden = hasLogs;
+  fullRoundLog.hidden = !hasLogs;
+}
+
+function updateLogModalStats() {
+  const level = levels[currentLevel];
+  modalRoundLabel.textContent = `轮次 ${state.round}`;
+  modalBestLabel.textContent = state.round ? `最佳 MSE ${state.bestMse.toFixed(4)}` : "最佳 --";
+  modalLevelLabel.textContent = `关卡 ${level.shortName} / 目标 ${level.target.toFixed(3)}`;
+}
+
+function openLogModal() {
+  renderLogLists();
+  updateLogModalStats();
+  logOverlay.hidden = false;
+  document.body.classList.add("modal-open");
+  closeLogBtn.focus();
+}
+
+function closeLogModal() {
+  logOverlay.hidden = true;
+  document.body.classList.remove("modal-open");
+  expandLogBtn.focus();
 }
 
 function updateHud() {
@@ -323,6 +372,7 @@ function updateHud() {
   rateLabel.textContent = Number(learningRate.value).toFixed(2);
   depthLabel.textContent = `${treeDepth.value} 段`;
   document.body.classList.toggle("overfit-mode", state.overfit > 0.15);
+  if (!logOverlay.hidden) updateLogModalStats();
 }
 
 function stopAuto() {
@@ -677,6 +727,14 @@ autoBtn.addEventListener("click", toggleAuto);
 undoBtn.addEventListener("click", undoStep);
 resetBtn.addEventListener("click", resetGame);
 nextLevelBtn.addEventListener("click", nextLevel);
+expandLogBtn.addEventListener("click", openLogModal);
+closeLogBtn.addEventListener("click", closeLogModal);
+logOverlay.addEventListener("click", (event) => {
+  if (event.target === logOverlay) closeLogModal();
+});
+window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !logOverlay.hidden) closeLogModal();
+});
 viewPicker.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-view]");
   if (button) setView(button.dataset.view);

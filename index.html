@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>梯度提升机训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=9" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
   </head>
   <body>
     <main class="game-shell">
@@ -91,6 +91,7 @@
         <section class="panel-block log-card">
           <div class="panel-heading">
             <h2>训练记录</h2>
+            <button id="expandLogBtn" class="mini-button" type="button" aria-haspopup="dialog">全屏</button>
             <span id="bestLabel">等待开始</span>
           </div>
           <p id="emptyLog" class="empty-log">还没有训练。点一次“训练下一棵”，这里会记录每棵弱树让误差下降了多少。</p>
@@ -99,6 +100,25 @@
       </aside>
     </main>
 
-    <script src="./app.js?v=9"></script>
+    <section id="logOverlay" class="log-overlay" role="dialog" aria-modal="true" aria-labelledby="logOverlayTitle" hidden>
+      <div class="log-modal">
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Training Log</p>
+            <h2 id="logOverlayTitle">训练记录</h2>
+          </div>
+          <button id="closeLogBtn" class="mini-button danger" type="button">关闭</button>
+        </div>
+        <div class="modal-stats">
+          <span id="modalRoundLabel">轮次 0</span>
+          <span id="modalBestLabel">最佳 --</span>
+          <span id="modalLevelLabel">关卡 --</span>
+        </div>
+        <p id="modalEmptyLog" class="empty-log">还没有训练记录。</p>
+        <ol id="fullRoundLog" class="full-round-log"></ol>
+      </div>
+    </section>
+
+    <script src="./app.js?v=10"></script>
   </body>
 </html>

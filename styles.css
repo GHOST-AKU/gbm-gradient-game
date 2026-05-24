@@ -46,6 +46,10 @@ body {
   overflow: hidden;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 body::before {
   position: fixed;
   inset: 0;
@@ -435,6 +439,17 @@ button.secondary {
   margin: 0;
 }
 
+.mini-button {
+  min-height: 28px;
+  padding: 2px 9px;
+  font-size: 12px;
+}
+
+.mini-button.danger {
+  background: var(--danger);
+  color: #fff3d6;
+}
+
 #bestLabel {
   color: var(--accent);
   font-size: 12px;
@@ -475,6 +490,85 @@ button.secondary {
 
 .log-card.has-logs .empty-log {
   display: none;
+}
+
+.log-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(5, 6, 12, 0.82);
+}
+
+.log-overlay[hidden] {
+  display: none;
+}
+
+.log-modal {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  width: min(980px, 100%);
+  height: min(620px, 100%);
+  border: 3px solid #22f0a4;
+  background:
+    linear-gradient(rgba(139, 211, 255, 0.035) 2px, transparent 2px),
+    linear-gradient(90deg, rgba(139, 211, 255, 0.035) 2px, transparent 2px),
+    #09111d;
+  background-size: 18px 18px;
+  box-shadow: 8px 8px 0 #05060c;
+  padding: 18px;
+}
+
+.modal-heading,
+.modal-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-heading h2 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.modal-stats {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin: 12px 0;
+  color: var(--muted);
+}
+
+.modal-stats span {
+  border: 3px solid #33476f;
+  background: #111827;
+  box-shadow: 3px 3px 0 #05060c;
+  padding: 6px 10px;
+}
+
+.full-round-log {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.full-round-log li {
+  border: 3px solid #33476f;
+  background: #111827;
+  box-shadow: 3px 3px 0 #05060c;
+  color: var(--ink);
+  padding: 12px;
+}
+
+.full-round-log li:first-child {
+  border-color: var(--accent);
+  background: #123126;
 }
 
 @media (max-width: 1100px) {
