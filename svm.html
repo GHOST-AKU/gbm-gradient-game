@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SVM 最大间隔训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=15" />
+    <link rel="stylesheet" href="./styles.css?v=16" />
   </head>
   <body class="svm-page">
     <nav class="lab-switch" aria-label="切换训练场">
@@ -112,11 +112,11 @@
 
         <section class="panel-block log-card">
           <div class="panel-heading">
-            <h2>训练记录</h2>
+            <h2>最新训练</h2>
             <button id="expandLogBtn" class="mini-button" type="button" aria-haspopup="dialog">全屏</button>
             <span id="bestLabel">等待开始</span>
           </div>
-          <p id="emptyLog" class="empty-log">还没有训练。这里之后只显示最新一次，完整记录点“全屏”。</p>
+          <p id="emptyLog" class="empty-log">等待第一轮训练。</p>
           <ol id="roundLog" class="round-log"></ol>
         </section>
       </aside>
@@ -141,6 +141,6 @@
       </div>
     </section>
 
-    <script src="./svm.js?v=15"></script>
+    <script src="./svm.js?v=16"></script>
   </body>
 </html>

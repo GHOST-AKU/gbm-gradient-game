@@ -238,13 +238,13 @@ function trainStep() {
   state.lossHistory.push(after.objective);
 
   const supportText = `${after.supportCount} 个支持向量`;
-  prependLog(`第 ${state.round} 轮 | ${supportText} | hinge ${before.hinge.toFixed(3)} 至 ${after.hinge.toFixed(3)} | 得分 ${after.score.toFixed(2)}`);
+  prependLog(`第 ${state.round} 轮  SV ${after.supportCount}  hinge ${after.hinge.toFixed(2)}  得分 ${after.score.toFixed(2)}`);
 
   toast.textContent = `第 ${state.round} 轮：违反间隔的样本被加权，边界向最大间隔移动；当前 ${supportText}。`;
   if (shouldOverfit) {
     toast.textContent = `OVERFIT MODE：你把噪声也学进去了。C=${c.toFixed(1)} + 核复杂度 ${complexity} 让边界开始乱抖。`;
     if (roundLog.firstElementChild) {
-      roundLog.firstElementChild.textContent = `过拟合警报 | 第 ${state.round} 轮 | 边界追着噪声抖动 | 得分 ${after.score.toFixed(2)}`;
+      roundLog.firstElementChild.textContent = `过拟合警报  第 ${state.round} 轮  噪声抖动  得分 ${after.score.toFixed(2)}`;
     }
   }
 
@@ -426,10 +426,10 @@ function fitCanvas() {
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
   const isSmall = rect.width < 560;
-  const left = isSmall ? 42 : 64;
-  const right = isSmall ? rect.width - 22 : rect.width - 42;
-  const top = isSmall ? 28 : 36;
-  const bottom = isSmall ? rect.height - 42 : rect.height - 58;
+  const left = isSmall ? 36 : 46;
+  const right = isSmall ? rect.width - 14 : rect.width - 24;
+  const top = isSmall ? 18 : 22;
+  const bottom = isSmall ? rect.height - 30 : rect.height - 34;
   return { left, right, top, bottom, width: right - left, height: bottom - top };
 }
 
