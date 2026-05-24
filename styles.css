@@ -572,8 +572,16 @@ button.secondary {
 }
 
 .svm-page .control-panel {
+  align-self: start;
   grid-template-rows: 144px 74px 194px 74px;
   gap: 8px;
+  height: auto;
+}
+
+.svm-page .game-shell {
+  max-width: 1640px;
+  margin: 0 auto;
+  grid-template-columns: minmax(760px, 1fr) 420px;
 }
 
 .svm-page .panel-block {
@@ -581,7 +589,7 @@ button.secondary {
 }
 
 .svm-page .canvas-wrap {
-  margin: 0 22px;
+  margin: 0 12px;
   border-width: 2px;
   box-shadow: inset 0 0 0 2px #05060c;
 }
@@ -609,11 +617,15 @@ button.secondary {
   grid-template-columns: 136px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  margin: 6px 22px 0;
+  margin: 6px 12px 0;
   padding: 6px 9px;
   border: 3px solid #33476f;
   background: #0b1424;
   box-shadow: 3px 3px 0 var(--pixel-shadow);
+}
+
+.svm-page .legend {
+  padding: 12px 18px 16px;
 }
 
 .chart-data-card .panel-heading {
