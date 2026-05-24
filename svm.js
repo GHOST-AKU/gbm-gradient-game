@@ -30,6 +30,13 @@ const autoBtn = document.querySelector("#autoBtn");
 const undoBtn = document.querySelector("#undoBtn");
 const resetBtn = document.querySelector("#resetBtn");
 const nextLevelBtn = document.querySelector("#nextLevelBtn");
+const boundaryFormula = document.querySelector("#boundaryFormula");
+const supportCountLabel = document.querySelector("#supportCountLabel");
+const accuracyLabel = document.querySelector("#accuracyLabel");
+const violationLabel = document.querySelector("#violationLabel");
+const hingeLabel = document.querySelector("#hingeLabel");
+const biasLabel = document.querySelector("#biasLabel");
+const gammaLabel = document.querySelector("#gammaLabel");
 
 const levels = [
   {
@@ -166,19 +173,22 @@ function metrics(alpha = state.alpha, bias = state.bias) {
   let correct = 0;
   let outsideMargin = 0;
   let supportCount = 0;
+  let violations = 0;
   targetPoints.forEach((point) => {
     const signed = point.label * scorePointWith(point, alpha, bias);
     hinge += Math.max(0, 1 - signed);
     if (signed > 0) correct += 1;
     if (signed >= 1) outsideMargin += 1;
     if (signed > -0.15 && signed < 1.18) supportCount += 1;
+    if (signed < 1) violations += 1;
   });
   hinge /= targetPoints.length;
   const regularizer = alpha.reduce((sum, value) => sum + value * value, 0) * 0.012;
   const accuracy = correct / targetPoints.length;
   const marginRate = outsideMargin / targetPoints.length;
   const score = Math.max(0, Math.min(0.99, accuracy * 0.62 + marginRate * 0.38 - state.overfit * 0.16));
-  return { hinge, objective: hinge + regularizer, accuracy, marginRate, score, supportCount };
+  const activeVectors = alpha.filter((value) => value > 0.01).length;
+  return { hinge, objective: hinge + regularizer, accuracy, marginRate, score, supportCount, violations, activeVectors };
 }
 
 function scorePointWith(point, alpha, bias) {
@@ -333,8 +343,20 @@ function updateHud() {
   progressFill.style.width = `${Math.round(Math.min(1, result.score / level.target) * 100)}%`;
   rateLabel.textContent = Number(penaltyC.value).toFixed(1);
   depthLabel.textContent = `${kernelPower.value} 级`;
+  updateBoundaryData(result);
   document.body.classList.toggle("overfit-mode", state.overfit > 0.15);
   if (!logOverlay.hidden) updateLogModalStats();
+}
+
+function updateBoundaryData(result = metrics()) {
+  const vectors = result.activeVectors;
+  boundaryFormula.textContent = vectors ? `f(x)=Σ${vectors}K+b` : "等待训练";
+  supportCountLabel.textContent = vectors;
+  accuracyLabel.textContent = `${Math.round(result.accuracy * 100)}%`;
+  violationLabel.textContent = result.violations;
+  hingeLabel.textContent = result.hinge.toFixed(2);
+  biasLabel.textContent = state.bias.toFixed(2);
+  gammaLabel.textContent = gamma().toFixed(2);
 }
 
 function stopAuto() {

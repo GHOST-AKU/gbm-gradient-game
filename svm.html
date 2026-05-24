@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SVM 最大间隔训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=14" />
+    <link rel="stylesheet" href="./styles.css?v=15" />
   </head>
   <body class="svm-page">
     <nav class="lab-switch" aria-label="切换训练场">
@@ -39,6 +39,21 @@
         </div>
 
         <div id="chartNote" class="chart-note">未训练：样本已经摆好，第一轮会开始寻找最大间隔。</div>
+
+        <section class="boundary-card chart-data-card" aria-label="当前决策边界数据">
+          <div class="panel-heading">
+            <h2>决策边界数据</h2>
+            <span id="boundaryFormula">等待训练</span>
+          </div>
+          <div class="boundary-stats">
+            <span><b id="supportCountLabel">0</b><small>支持向量</small></span>
+            <span><b id="accuracyLabel">--</b><small>正确率</small></span>
+            <span><b id="violationLabel">--</b><small>间隔违规</small></span>
+            <span><b id="hingeLabel">--</b><small>hinge</small></span>
+            <span><b id="biasLabel">0.00</b><small>偏置 b</small></span>
+            <span><b id="gammaLabel">--</b><small>gamma</small></span>
+          </div>
+        </section>
 
         <div class="legend" aria-label="图例">
           <span><i class="sample-key positive-key"></i>正类样本</span>
@@ -126,6 +141,6 @@
       </div>
     </section>
 
-    <script src="./svm.js?v=14"></script>
+    <script src="./svm.js?v=15"></script>
   </body>
 </html>
