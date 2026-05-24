@@ -67,6 +67,32 @@ body::before {
   opacity: 0.45;
 }
 
+.lab-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 8px 18px 0;
+}
+
+.lab-switch a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 3px solid #05060c;
+  background: var(--surface-3);
+  box-shadow: 3px 3px 0 #05060c;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.lab-switch a.active {
+  background: #134e4a;
+  color: #bff7df;
+}
+
 button,
 input {
   font: inherit;
@@ -76,9 +102,9 @@ input {
   display: grid;
   grid-template-columns: minmax(680px, 1fr) 420px;
   gap: 18px;
-  height: 100vh;
-  height: 100dvh;
-  padding: 18px;
+  height: calc(100vh - 44px);
+  height: calc(100dvh - 44px);
+  padding: 10px 18px 18px;
   overflow: hidden;
 }
 
@@ -276,6 +302,14 @@ canvas {
 
 .target {
   background: var(--accent-2);
+}
+
+.positive {
+  background: var(--accent);
+}
+
+.negative {
+  background: var(--blue);
 }
 
 .prediction {

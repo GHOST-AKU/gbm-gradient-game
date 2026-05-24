@@ -3,26 +3,26 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>梯度提升机训练场</title>
+    <title>SVM 最大间隔训练场</title>
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./styles.css?v=11" />
   </head>
   <body>
     <nav class="lab-switch" aria-label="切换训练场">
-      <a href="./index.html" class="active">GBM 训练场</a>
-      <a href="./svm.html">SVM 训练场</a>
+      <a href="./index.html">GBM 训练场</a>
+      <a href="./svm.html" class="active">SVM 训练场</a>
     </nav>
     <main class="game-shell">
-      <section class="stage" aria-label="梯度提升机交互画布">
+      <section class="stage" aria-label="支持向量机交互画布">
         <div class="topbar">
           <div class="title-group">
-            <p class="eyebrow">Boost Lab</p>
-            <h1>梯度提升机训练场</h1>
-            <p id="levelSubtitle" class="subtitle">每一棵小树都只追上一轮没解释掉的残差。</p>
+            <p class="eyebrow">SVM Arcade Lab</p>
+            <h1>SVM 最大间隔训练场</h1>
+            <p id="levelSubtitle" class="subtitle">把决策边界推到两类样本之间，让间隔尽可能宽。</p>
           </div>
           <div class="meter-row" aria-live="polite">
             <div class="score-card">
-              <span>均方误差</span>
+              <span>间隔得分</span>
               <strong id="mseValue">--</strong>
             </div>
             <div class="score-card compact">
@@ -32,17 +32,18 @@
           </div>
         </div>
 
-        <div id="toast" class="toast" role="status">选择关卡和观察方式，然后训练第一棵弱树。</div>
+        <div id="toast" class="toast" role="status">选择关卡和观察方式，然后训练第一轮 SVM。</div>
 
         <div class="canvas-wrap">
           <canvas id="chart" width="980" height="520"></canvas>
         </div>
 
         <div class="legend" aria-label="图例">
-          <span><i class="dot target"></i>真实目标</span>
-          <span><i class="line prediction"></i>当前模型</span>
-          <span><i class="bar residual"></i>残差方向</span>
-          <span><i class="line learner"></i>本轮弱学习器</span>
+          <span><i class="dot positive"></i>正类样本</span>
+          <span><i class="dot negative"></i>负类样本</span>
+          <span><i class="line prediction"></i>决策边界</span>
+          <span><i class="line learner"></i>间隔带</span>
+          <span><i class="bar residual"></i>支持向量</span>
         </div>
       </section>
 
@@ -53,7 +54,7 @@
             <span id="targetLabel">目标 --</span>
           </div>
           <div id="levelPicker" class="choice-grid" aria-label="选择关卡"></div>
-          <p id="missionText">把蓝色模型曲线推近黄色目标点。红线越短，说明残差越小。</p>
+          <p id="missionText">找到一条边界，把两类样本分开，同时让离边界最近的点尽量远。</p>
           <div class="progress-track" aria-hidden="true">
             <div id="progressFill"></div>
           </div>
@@ -62,29 +63,29 @@
         <section class="panel-block view-card">
           <h2>观察方式</h2>
           <div id="viewPicker" class="segmented" aria-label="选择观察方式">
-            <button type="button" data-view="model" class="active">模型</button>
-            <button type="button" data-view="residual">残差</button>
-            <button type="button" data-view="learner">弱树</button>
-            <button type="button" data-view="loss">误差</button>
+            <button type="button" data-view="boundary" class="active">边界</button>
+            <button type="button" data-view="margin">间隔</button>
+            <button type="button" data-view="support">向量</button>
+            <button type="button" data-view="loss">损失</button>
           </div>
         </section>
 
         <section class="panel-block controls-card">
           <h2>训练控制</h2>
           <label class="slider-row" for="learningRate">
-            <span>学习率</span>
-            <strong id="rateLabel">0.30</strong>
+            <span>惩罚 C</span>
+            <strong id="rateLabel">1.00</strong>
           </label>
-          <input id="learningRate" type="range" min="0.05" max="0.8" value="0.3" step="0.05" />
+          <input id="learningRate" type="range" min="0.2" max="4" value="1" step="0.1" />
 
           <label class="slider-row" for="treeDepth">
-            <span>树桩复杂度</span>
-            <strong id="depthLabel">3 段</strong>
+            <span>核复杂度</span>
+            <strong id="depthLabel">3 级</strong>
           </label>
           <input id="treeDepth" type="range" min="1" max="8" value="3" step="1" />
 
           <div class="button-grid">
-            <button id="stepBtn" type="button">训练下一棵</button>
+            <button id="stepBtn" type="button">训练一轮</button>
             <button id="autoBtn" type="button" class="secondary">自动训练</button>
             <button id="undoBtn" type="button" class="secondary">撤回一轮</button>
             <button id="resetBtn" type="button" class="secondary">重置</button>
@@ -98,7 +99,7 @@
             <button id="expandLogBtn" class="mini-button" type="button" aria-haspopup="dialog">全屏</button>
             <span id="bestLabel">等待开始</span>
           </div>
-          <p id="emptyLog" class="empty-log">还没有训练。点一次“训练下一棵”，这里会记录每棵弱树让误差下降了多少。</p>
+          <p id="emptyLog" class="empty-log">还没有训练。点一次“训练一轮”，这里会记录支持向量、间隔和 hinge loss 的变化。</p>
           <ol id="roundLog" class="round-log"></ol>
         </section>
       </aside>
@@ -123,6 +124,6 @@
       </div>
     </section>
 
-    <script src="./app.js?v=10"></script>
+    <script src="./svm.js?v=11"></script>
   </body>
 </html>
