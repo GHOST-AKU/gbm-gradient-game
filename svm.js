@@ -4,6 +4,7 @@ const mseValue = document.querySelector("#mseValue");
 const roundValue = document.querySelector("#roundValue");
 const progressFill = document.querySelector("#progressFill");
 const toast = document.querySelector("#toast");
+const chartNote = document.querySelector("#chartNote");
 const roundLog = document.querySelector("#roundLog");
 const logCard = document.querySelector(".log-card");
 const expandLogBtn = document.querySelector("#expandLogBtn");
@@ -124,6 +125,7 @@ function resetGame() {
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "先观察样本，再训练第一轮。SVM 会寻找能最大化分类间隔的边界。";
+  chartNote.textContent = "未训练：样本已经摆好，第一轮会开始寻找最大间隔。";
   updatePickers();
   draw();
   updateHud();
@@ -370,6 +372,7 @@ function setView(view) {
     loss: "损失视图：观察 hinge loss 和正则项的总目标是否还在下降。",
   };
   toast.textContent = labels[view];
+  chartNote.textContent = labels[view];
   draw();
 }
 
@@ -490,7 +493,6 @@ function drawAxes(bounds, view) {
 
 function drawDecisionField(bounds, view) {
   if (state.round === 0 && state.alpha.every((value) => value < 0.0001)) {
-    drawPanelTitle(bounds, "未训练：样本已经摆好，第一轮会开始寻找最大间隔");
     return;
   }
   const cols = 46;
@@ -537,7 +539,7 @@ function drawMarginBand(bounds) {
     }
   }
   ctx.restore();
-  drawPanelTitle(bounds, "间隔带越宽越稳；落在带内的样本会继续影响边界");
+  chartNote.textContent = "间隔带越宽越稳；落在带内的样本会继续影响边界。";
 }
 
 function drawSupportInfluence(bounds) {
@@ -552,7 +554,7 @@ function drawSupportInfluence(bounds) {
     }
   });
   ctx.restore();
-  drawPanelTitle(bounds, "这些方框点就是支持向量：边界主要听它们的");
+  chartNote.textContent = "这些方框点就是支持向量：边界主要听它们的。";
 }
 
 function drawOverfitGlitch(bounds) {
@@ -622,20 +624,7 @@ function drawLoss(bounds) {
     ctx.fillStyle = "#ffd447";
     ctx.fillRect(toX(index) - 4, toY(value) - 4, 8, 8);
   });
-  drawPanelTitle(bounds, "hinge loss + 正则项：下降说明边界还在变好");
-  ctx.restore();
-}
-
-function drawPanelTitle(bounds, text) {
-  ctx.save();
-  ctx.fillStyle = "#08111d";
-  ctx.fillRect(bounds.left + 12, bounds.top + 12, Math.min(bounds.width - 24, 520), 34);
-  ctx.strokeStyle = "#22f0a4";
-  ctx.lineWidth = 3;
-  ctx.strokeRect(bounds.left + 12, bounds.top + 12, Math.min(bounds.width - 24, 520), 34);
-  ctx.fillStyle = "#fff3d6";
-  ctx.font = "14px Courier New, Microsoft YaHei, monospace";
-  ctx.fillText(text, bounds.left + 24, bounds.top + 34);
+  chartNote.textContent = "hinge loss + 正则项：下降说明边界还在变好。";
   ctx.restore();
 }
 
