@@ -573,9 +573,14 @@ button.secondary {
 
 .svm-page .control-panel {
   align-self: start;
-  grid-template-rows: 144px 74px 194px 74px;
+  grid-template-rows: auto auto auto auto;
   gap: 8px;
   height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
 }
 
 .svm-page .game-shell {
