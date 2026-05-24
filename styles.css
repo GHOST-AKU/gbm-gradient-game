@@ -571,6 +571,73 @@ button.secondary {
   display: none;
 }
 
+.svm-page .control-panel {
+  grid-template-rows: minmax(136px, auto) minmax(78px, auto) minmax(218px, auto) minmax(82px, 92px);
+  gap: 8px;
+}
+
+.svm-page .panel-block {
+  padding: 9px;
+}
+
+.svm-page .mission-card p {
+  line-height: 1.42;
+}
+
+.svm-page .choice-grid,
+.svm-page .segmented {
+  gap: 6px;
+}
+
+.svm-page .choice-grid button,
+.svm-page .segmented button {
+  min-height: 29px;
+}
+
+.svm-page .slider-row {
+  margin-top: 4px;
+}
+
+.svm-page input[type="range"] {
+  margin: 4px 0 7px;
+}
+
+.svm-page .button-grid {
+  gap: 6px;
+}
+
+.svm-page .button-grid button {
+  min-height: 32px;
+}
+
+.svm-page .log-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.svm-page .log-card .panel-heading {
+  margin-bottom: 5px;
+}
+
+.svm-page .log-card .empty-log {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.svm-page .round-log {
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.svm-page .round-log li {
+  padding: 7px 9px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .log-overlay {
   position: fixed;
   inset: 0;

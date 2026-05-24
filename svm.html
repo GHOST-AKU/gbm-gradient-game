@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SVM 最大间隔训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=13" />
+    <link rel="stylesheet" href="./styles.css?v=14" />
   </head>
-  <body>
+  <body class="svm-page">
     <nav class="lab-switch" aria-label="切换训练场">
       <a href="./index.html">GBM 训练场</a>
       <a href="./svm.html" class="active">SVM 训练场</a>
@@ -101,7 +101,7 @@
             <button id="expandLogBtn" class="mini-button" type="button" aria-haspopup="dialog">全屏</button>
             <span id="bestLabel">等待开始</span>
           </div>
-          <p id="emptyLog" class="empty-log">还没有训练。点一次“训练一轮”，这里会记录支持向量、间隔和 hinge loss 的变化。</p>
+          <p id="emptyLog" class="empty-log">还没有训练。这里之后只显示最新一次，完整记录点“全屏”。</p>
           <ol id="roundLog" class="round-log"></ol>
         </section>
       </aside>
@@ -126,6 +126,6 @@
       </div>
     </section>
 
-    <script src="./svm.js?v=12"></script>
+    <script src="./svm.js?v=14"></script>
   </body>
 </html>

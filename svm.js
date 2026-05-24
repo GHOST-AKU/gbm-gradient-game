@@ -285,7 +285,7 @@ function renderLogLists() {
   roundLog.innerHTML = "";
   fullRoundLog.innerHTML = "";
 
-  state.logEntries.slice(0, 7).forEach((message) => {
+  state.logEntries.slice(0, 1).forEach((message) => {
     const item = document.createElement("li");
     item.textContent = message;
     roundLog.append(item);
