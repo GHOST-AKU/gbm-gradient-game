@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SVM 最大间隔训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=18" />
+    <link rel="stylesheet" href="./styles.css?v=19" />
   </head>
   <body class="svm-page">
     <nav class="lab-switch" aria-label="切换训练场">
@@ -38,22 +38,11 @@
           <canvas id="chart" width="980" height="520"></canvas>
         </div>
 
-        <div id="chartNote" class="chart-note">未训练：样本已经摆好，第一轮会开始寻找最大间隔。</div>
-
-        <section class="boundary-card chart-data-card" aria-label="当前决策边界数据">
-          <div class="panel-heading">
-            <h2>决策边界数据</h2>
-            <span id="boundaryFormula">等待训练</span>
-          </div>
-          <div class="boundary-stats">
-            <span><b id="supportCountLabel">0</b><small>支持向量</small></span>
-            <span><b id="accuracyLabel">--</b><small>正确率</small></span>
-            <span><b id="violationLabel">--</b><small>间隔违规</small></span>
-            <span><b id="hingeLabel">--</b><small>hinge</small></span>
-            <span><b id="biasLabel">0.00</b><small>偏置 b</small></span>
-            <span><b id="gammaLabel">--</b><small>gamma</small></span>
-          </div>
-        </section>
+        <div id="chartNote" class="chart-note latest-note" role="status">
+          <span id="latestText">未训练：样本已经摆好，第一轮会开始寻找最大间隔。</span>
+          <span id="bestLabel">等待开始</span>
+          <button id="expandLogBtn" class="mini-button" type="button" aria-haspopup="dialog">全屏</button>
+        </div>
 
         <div class="legend" aria-label="图例">
           <span><i class="sample-key positive-key"></i>正类样本</span>
@@ -110,14 +99,19 @@
           </div>
         </section>
 
-        <section class="panel-block log-card">
+        <section class="panel-block boundary-card chart-data-card" aria-label="当前决策边界数据">
           <div class="panel-heading">
-            <h2>最新训练</h2>
-            <button id="expandLogBtn" class="mini-button" type="button" aria-haspopup="dialog">全屏</button>
-            <span id="bestLabel">等待开始</span>
+            <h2>决策边界数据</h2>
+            <span id="boundaryFormula">等待训练</span>
           </div>
-          <p id="emptyLog" class="empty-log">等待第一轮训练。</p>
-          <ol id="roundLog" class="round-log"></ol>
+          <div class="boundary-stats">
+            <span><b id="supportCountLabel">0</b><small>支持向量</small></span>
+            <span><b id="accuracyLabel">--</b><small>正确率</small></span>
+            <span><b id="violationLabel">--</b><small>间隔违规</small></span>
+            <span><b id="hingeLabel">--</b><small>hinge</small></span>
+            <span><b id="biasLabel">0.00</b><small>偏置 b</small></span>
+            <span><b id="gammaLabel">--</b><small>gamma</small></span>
+          </div>
         </section>
       </aside>
     </main>
@@ -141,6 +135,6 @@
       </div>
     </section>
 
-    <script src="./svm.js?v=18"></script>
+    <script src="./svm.js?v=19"></script>
   </body>
 </html>

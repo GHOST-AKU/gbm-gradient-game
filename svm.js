@@ -5,6 +5,7 @@ const roundValue = document.querySelector("#roundValue");
 const progressFill = document.querySelector("#progressFill");
 const toast = document.querySelector("#toast");
 const chartNote = document.querySelector("#chartNote");
+const latestText = document.querySelector("#latestText");
 const roundLog = document.querySelector("#roundLog");
 const logCard = document.querySelector(".log-card");
 const expandLogBtn = document.querySelector("#expandLogBtn");
@@ -126,13 +127,13 @@ function resetGame() {
     completedRound: null,
     overfit: 0,
   };
-  roundLog.innerHTML = "";
+  if (roundLog) roundLog.innerHTML = "";
   fullRoundLog.innerHTML = "";
-  logCard.classList.remove("has-logs");
+  if (logCard) logCard.classList.remove("has-logs");
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "先观察样本，再训练第一轮。SVM 会寻找能最大化分类间隔的边界。";
-  chartNote.textContent = "未训练：样本已经摆好，第一轮会开始寻找最大间隔。";
+  latestText.textContent = "未训练：样本已经摆好，第一轮会开始寻找最大间隔。";
   updatePickers();
   draw();
   updateHud();
@@ -243,7 +244,9 @@ function trainStep() {
   toast.textContent = `第 ${state.round} 轮：违反间隔的样本被加权，边界向最大间隔移动；当前 ${supportText}。`;
   if (shouldOverfit) {
     toast.textContent = `OVERFIT MODE：你把噪声也学进去了。C=${c.toFixed(1)} + 核复杂度 ${complexity} 让边界开始乱抖。`;
-    if (roundLog.firstElementChild) {
+    state.logEntries[0] = `过拟合警报  第 ${state.round} 轮  噪声抖动  得分 ${after.score.toFixed(2)}`;
+    latestText.textContent = state.logEntries[0];
+    if (roundLog?.firstElementChild) {
       roundLog.firstElementChild.textContent = `过拟合警报  第 ${state.round} 轮  噪声抖动  得分 ${after.score.toFixed(2)}`;
     }
   }
@@ -291,15 +294,18 @@ function prependLog(message) {
 
 function renderLogLists() {
   const hasLogs = state.logEntries.length > 0;
-  logCard.classList.toggle("has-logs", hasLogs);
-  roundLog.innerHTML = "";
+  if (logCard) logCard.classList.toggle("has-logs", hasLogs);
+  if (roundLog) roundLog.innerHTML = "";
   fullRoundLog.innerHTML = "";
+  latestText.textContent = hasLogs ? state.logEntries[0] : "未训练：样本已经摆好，第一轮会开始寻找最大间隔。";
 
-  state.logEntries.slice(0, 1).forEach((message) => {
-    const item = document.createElement("li");
-    item.textContent = message;
-    roundLog.append(item);
-  });
+  if (roundLog) {
+    state.logEntries.slice(0, 1).forEach((message) => {
+      const item = document.createElement("li");
+      item.textContent = message;
+      roundLog.append(item);
+    });
+  }
 
   state.logEntries.forEach((message) => {
     const item = document.createElement("li");
@@ -394,7 +400,7 @@ function setView(view) {
     loss: "损失视图：观察 hinge loss 和正则项的总目标是否还在下降。",
   };
   toast.textContent = labels[view];
-  chartNote.textContent = labels[view];
+  toast.textContent = labels[view];
   draw();
 }
 
@@ -561,7 +567,7 @@ function drawMarginBand(bounds) {
     }
   }
   ctx.restore();
-  chartNote.textContent = "间隔带越宽越稳；落在带内的样本会继续影响边界。";
+  toast.textContent = "间隔带越宽越稳；落在带内的样本会继续影响边界。";
 }
 
 function drawSupportInfluence(bounds) {
@@ -576,7 +582,7 @@ function drawSupportInfluence(bounds) {
     }
   });
   ctx.restore();
-  chartNote.textContent = "这些方框点就是支持向量：边界主要听它们的。";
+  toast.textContent = "这些方框点就是支持向量：边界主要听它们的。";
 }
 
 function drawOverfitGlitch(bounds) {
@@ -646,7 +652,7 @@ function drawLoss(bounds) {
     ctx.fillStyle = "#ffd447";
     ctx.fillRect(toX(index) - 4, toY(value) - 4, 8, 8);
   });
-  chartNote.textContent = "hinge loss + 正则项：下降说明边界还在变好。";
+  toast.textContent = "hinge loss + 正则项：下降说明边界还在变好。";
   ctx.restore();
 }
 

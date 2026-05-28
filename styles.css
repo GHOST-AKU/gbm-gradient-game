@@ -250,6 +250,28 @@ canvas {
   box-shadow: 3px 3px 0 var(--pixel-shadow);
 }
 
+.latest-note {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.latest-note #latestText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.latest-note #bestLabel {
+  white-space: nowrap;
+}
+
+.latest-note .mini-button {
+  justify-self: end;
+}
+
 .overfit-mode .toast {
   border-color: var(--danger);
   color: #ffe0d6;
@@ -629,6 +651,13 @@ button.secondary {
   box-shadow: 3px 3px 0 var(--pixel-shadow);
 }
 
+.svm-page .control-panel .chart-data-card {
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin: 0;
+  padding: 8px;
+}
+
 .svm-page .legend {
   padding: 12px 18px 16px;
 }
@@ -653,6 +682,10 @@ button.secondary {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 5px;
+}
+
+.svm-page .control-panel .boundary-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .boundary-stats span {
