@@ -497,10 +497,10 @@ function fitCanvas() {
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
   const isSmall = rect.width < 560;
-  const left = isSmall ? 38 : 52;
-  const right = isSmall ? rect.width - 10 : rect.width - 16;
-  const top = isSmall ? 10 : 14;
-  const bottom = isSmall ? rect.height - 28 : rect.height - 34;
+  const left = isSmall ? 28 : 34;
+  const right = isSmall ? rect.width - 4 : rect.width - 6;
+  const top = isSmall ? 2 : 4;
+  const bottom = isSmall ? rect.height - 8 : rect.height - 10;
   return { left, right, top, bottom, width: right - left, height: bottom - top };
 }
 
@@ -537,9 +537,7 @@ function draw() {
 }
 
 function drawBackdrop(rect, bounds) {
-  ctx.fillStyle = "#07101c";
-  ctx.fillRect(0, 0, rect.width, rect.height);
-  ctx.fillStyle = "rgba(34, 240, 164, 0.04)";
+  ctx.fillStyle = "rgba(7, 16, 28, 0.34)";
   ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
 }
 
@@ -577,11 +575,11 @@ function drawAxes(bounds, view) {
   ctx.font = "12px Courier New, Microsoft YaHei, monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
-  ctx.fillText(view === "loss" ? "训练轮次" : "特征 x1", bounds.right - 8, bounds.bottom + 24);
+  ctx.fillText(view === "loss" ? "训练轮次" : "特征 x1", bounds.right - 8, bounds.bottom - 7);
   ctx.save();
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.translate(bounds.left - 34, bounds.top + bounds.height / 2);
+  ctx.translate(bounds.left + 12, bounds.top + bounds.height / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.fillText(view === "loss" ? "目标函数" : "特征 x2", 0, 0);
   ctx.restore();
