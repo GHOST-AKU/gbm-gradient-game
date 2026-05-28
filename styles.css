@@ -264,12 +264,25 @@ canvas {
   white-space: nowrap;
 }
 
+.latest-note #latestText.is-rolling {
+  animation: latest-roll 280ms steps(4, end);
+}
+
 .latest-note #bestLabel {
   white-space: nowrap;
 }
 
 .latest-note .mini-button {
   justify-self: end;
+}
+
+@keyframes latest-roll {
+  from {
+    transform: translateY(10px);
+  }
+  to {
+    transform: translateY(0);
+  }
 }
 
 .overfit-mode .toast {
