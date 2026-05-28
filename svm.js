@@ -122,6 +122,10 @@ function makePoints(level) {
 }
 
 function latestMessages() {
+  if (state?.completedRound !== null) {
+    const level = levels[currentLevel];
+    return [`通关！目标间隔得分 ${level.target.toFixed(2)}，你在第 ${state.completedRound} 轮达成。`];
+  }
   const messages = [];
   if (state?.logEntries?.length) messages.push(state.logEntries[0]);
   if (latestStatus) messages.push(latestStatus);
@@ -130,18 +134,20 @@ function latestMessages() {
   return [...new Set(messages)];
 }
 
-function showLatestMessage(message) {
+function showLatestMessage(message, animate = false) {
   latestText.textContent = message;
   latestText.classList.remove("is-rolling");
-  void latestText.offsetWidth;
-  latestText.classList.add("is-rolling");
+  if (animate) {
+    void latestText.offsetWidth;
+    latestText.classList.add("is-rolling");
+  }
 }
 
 function updateLatestTicker(reset = false) {
   const messages = latestMessages();
   if (reset) latestTickerIndex = 0;
   latestTickerIndex %= messages.length;
-  showLatestMessage(messages[latestTickerIndex]);
+  showLatestMessage(messages[latestTickerIndex], false);
 
   if (latestTicker) {
     clearInterval(latestTicker);
@@ -151,7 +157,7 @@ function updateLatestTicker(reset = false) {
     latestTicker = setInterval(() => {
       const nextMessages = latestMessages();
       latestTickerIndex = (latestTickerIndex + 1) % nextMessages.length;
-      showLatestMessage(nextMessages[latestTickerIndex]);
+      showLatestMessage(nextMessages[latestTickerIndex], true);
     }, 3000);
   }
 }
@@ -491,10 +497,10 @@ function fitCanvas() {
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
   const isSmall = rect.width < 560;
-  const left = isSmall ? 36 : 46;
-  const right = isSmall ? rect.width - 14 : rect.width - 24;
-  const top = isSmall ? 18 : 22;
-  const bottom = isSmall ? rect.height - 30 : rect.height - 34;
+  const left = isSmall ? 38 : 52;
+  const right = isSmall ? rect.width - 10 : rect.width - 16;
+  const top = isSmall ? 10 : 14;
+  const bottom = isSmall ? rect.height - 28 : rect.height - 34;
   return { left, right, top, bottom, width: right - left, height: bottom - top };
 }
 
@@ -569,9 +575,13 @@ function drawAxes(bounds, view) {
   ctx.lineTo(bounds.right, bounds.bottom);
   ctx.stroke();
   ctx.font = "12px Courier New, Microsoft YaHei, monospace";
-  ctx.fillText(view === "loss" ? "训练轮次" : "特征 x1", bounds.right - 64, bounds.bottom + 30);
+  ctx.textAlign = "right";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(view === "loss" ? "训练轮次" : "特征 x1", bounds.right - 8, bounds.bottom + 24);
   ctx.save();
-  ctx.translate(bounds.left - 38, bounds.top + 92);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.translate(bounds.left - 34, bounds.top + bounds.height / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.fillText(view === "loss" ? "目标函数" : "特征 x2", 0, 0);
   ctx.restore();
