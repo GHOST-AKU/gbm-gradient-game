@@ -4,6 +4,7 @@ const mseValue = document.querySelector("#mseValue");
 const roundValue = document.querySelector("#roundValue");
 const progressFill = document.querySelector("#progressFill");
 const toast = document.querySelector("#toast");
+const chartNote = document.querySelector("#chartNote");
 const latestText = document.querySelector("#latestText");
 const roundLog = document.querySelector("#roundLog");
 const logCard = document.querySelector(".log-card");
@@ -497,7 +498,7 @@ function fitCanvas() {
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
   const isSmall = rect.width < 560;
-  const left = isSmall ? 28 : 34;
+  const left = isSmall ? 2 : 4;
   const right = isSmall ? rect.width - 4 : rect.width - 6;
   const top = isSmall ? 2 : 4;
   const bottom = isSmall ? rect.height - 8 : rect.height - 10;
@@ -576,13 +577,9 @@ function drawAxes(bounds, view) {
   ctx.textAlign = "right";
   ctx.textBaseline = "bottom";
   ctx.fillText(view === "loss" ? "训练轮次" : "特征 x1", bounds.right - 8, bounds.bottom - 7);
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.translate(bounds.left + 12, bounds.top + bounds.height / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText(view === "loss" ? "目标函数" : "特征 x2", 0, 0);
-  ctx.restore();
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(view === "loss" ? "目标函数" : "特征 x2", bounds.left + 10, bounds.top + 10);
   ctx.restore();
 }
 

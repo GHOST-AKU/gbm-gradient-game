@@ -264,8 +264,12 @@ canvas {
   white-space: nowrap;
 }
 
-.latest-note #latestText.is-rolling {
-  animation: latest-roll 280ms steps(4, end);
+.latest-note.fx-crt #latestText.is-rolling {
+  animation: latest-crt 360ms steps(5, end);
+}
+
+.latest-note.fx-crt #latestText {
+  text-shadow: 0 0 8px rgba(139, 211, 255, 0.36);
 }
 
 .latest-note #bestLabel {
@@ -276,12 +280,18 @@ canvas {
   justify-self: end;
 }
 
-@keyframes latest-roll {
-  from {
-    transform: translateY(10px);
+@keyframes latest-crt {
+  0% {
+    filter: brightness(1);
+    clip-path: inset(46% 0 46% 0);
   }
-  to {
-    transform: translateY(0);
+  45% {
+    filter: brightness(1.9);
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    filter: brightness(1);
+    clip-path: inset(0 0 0 0);
   }
 }
 
