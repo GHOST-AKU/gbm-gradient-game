@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>决策树训练场</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css?v=24" />
+  </head>
+  <body class="tree-page">
+    <nav class="lab-switch" aria-label="切换训练场">
+      <a href="./gbm.html">GBM 训练场</a>
+      <a href="./svm.html">SVM 训练场</a>
+      <a href="./kmeans.html">K-Means 训练场</a>
+      <a href="./tree.html" class="active">决策树训练场</a>
+    </nav>
+
+    <main class="game-shell">
+      <section class="stage" aria-label="决策树交互画布">
+        <div class="topbar">
+          <div class="title-group">
+            <p class="eyebrow">Tree Split Lab</p>
+            <h1>决策树训练场</h1>
+            <p id="levelSubtitle" class="subtitle">选择一刀切分，让杂乱区域变成更纯的叶子。</p>
+          </div>
+          <div class="meter-row" aria-live="polite">
+            <div class="score-card">
+              <span>分类得分</span>
+              <strong id="mseValue">--</strong>
+            </div>
+            <div class="score-card compact">
+              <span>叶子</span>
+              <strong id="roundValue">1</strong>
+            </div>
+          </div>
+        </div>
+
+        <div id="toast" class="toast" role="status">先观察最混乱的叶子，再选择切分线。</div>
+
+        <div class="canvas-wrap">
+          <canvas id="chart" width="980" height="520"></canvas>
+        </div>
+
+        <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
+          <span id="latestText">未切分：整张地图只有一个叶子，预测全靠多数票。</span>
+          <span id="bestLabel">等待开始</span>
+        </div>
+
+        <div class="legend" aria-label="图例">
+          <span><i class="sample-key positive-key"></i>正类样本</span>
+          <span><i class="sample-key negative-key"></i>负类样本</span>
+          <span><i class="line split-key"></i>候选切分</span>
+          <span><i class="support-key"></i>当前叶子</span>
+        </div>
+      </section>
+
+      <aside class="control-panel" aria-label="游戏控制">
+        <section class="panel-block mission-card">
+          <div class="panel-heading">
+            <h2>关卡</h2>
+            <span id="targetLabel">目标 --</span>
+          </div>
+          <div id="levelPicker" class="choice-grid" aria-label="选择关卡"></div>
+          <p id="missionText">每一刀都只切当前最混乱的叶子，尽量用少量叶子达到高正确率。</p>
+          <div class="progress-track" aria-hidden="true">
+            <div id="progressFill"></div>
+          </div>
+        </section>
+
+        <section class="panel-block view-card">
+          <h2>观察方式</h2>
+          <div id="viewPicker" class="segmented" aria-label="选择观察方式">
+            <button type="button" data-view="regions" class="active">区域</button>
+            <button type="button" data-view="gain">增益</button>
+            <button type="button" data-view="tree">树形</button>
+            <button type="button" data-view="errors">错分</button>
+          </div>
+        </section>
+
+        <section class="panel-block controls-card">
+          <h2>切分控制</h2>
+          <div id="axisPicker" class="segmented two-up" aria-label="选择切分轴">
+            <button type="button" data-axis="x" class="active">切 x</button>
+            <button type="button" data-axis="y">切 y</button>
+          </div>
+
+          <label class="slider-row" for="threshold">
+            <span>阈值</span>
+            <strong id="thresholdLabel">0.00</strong>
+          </label>
+          <input id="threshold" type="range" min="-0.9" max="0.9" value="0" step="0.02" />
+
+          <label class="slider-row" for="maxDepth">
+            <span>最大深度</span>
+            <strong id="depthLabel">4</strong>
+          </label>
+          <input id="maxDepth" type="range" min="1" max="6" value="4" step="1" />
+
+          <div class="button-grid">
+            <button id="stepBtn" type="button">应用切分</button>
+            <button id="bestBtn" type="button" class="secondary">最佳切分</button>
+            <button id="undoBtn" type="button" class="secondary">撤回一刀</button>
+            <button id="resetBtn" type="button" class="secondary">重置</button>
+            <button id="nextLevelBtn" type="button" class="secondary wide">下一关</button>
+          </div>
+        </section>
+
+        <section class="panel-block boundary-card chart-data-card" aria-label="当前树数据">
+          <div class="panel-heading">
+            <h2>树数据</h2>
+            <span id="formulaLabel">等待切分</span>
+          </div>
+          <div class="boundary-stats">
+            <span><b id="accuracyLabel">--</b><small>正确率</small></span>
+            <span><b id="gainLabel">--</b><small>增益</small></span>
+            <span><b id="leafLabel">1</b><small>叶子</small></span>
+            <span><b id="depthStatLabel">0</b><small>深度</small></span>
+            <span><b id="impurityLabel">--</b><small>不纯度</small></span>
+            <span><b id="bestScoreLabel">--</b><small>最佳</small></span>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="./tree.js?v=1"></script>
+  </body>
+</html>
