@@ -440,11 +440,10 @@ function fitCanvas() {
 
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
-  const isSmall = rect.width < 560;
-  const left = isSmall ? 46 : 68;
-  const right = isSmall ? rect.width - 18 : rect.width - 36;
-  const top = isSmall ? 30 : 38;
-  const bottom = isSmall ? rect.height - 42 : rect.height - 58;
+  const left = 4;
+  const right = rect.width - 6;
+  const top = 4;
+  const bottom = rect.height - 10;
 
   return {
     left,
@@ -479,9 +478,7 @@ function draw() {
 }
 
 function drawBackdrop(rect, bounds) {
-  ctx.fillStyle = "#07101c";
-  ctx.fillRect(0, 0, rect.width, rect.height);
-  ctx.fillStyle = "rgba(34, 240, 164, 0.04)";
+  ctx.fillStyle = "rgba(7, 16, 28, 0.34)";
   ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
 }
 
@@ -517,13 +514,14 @@ function drawAxes(bounds, view) {
   ctx.lineTo(bounds.right, bounds.bottom);
   ctx.stroke();
   ctx.font = "12px Courier New, Microsoft YaHei, monospace";
-  ctx.fillText(view === "loss" ? "训练轮次" : "特征 x", bounds.right - 58, bounds.bottom + 30);
-  ctx.save();
-  ctx.translate(bounds.left - 38, bounds.top + 92);
-  ctx.rotate(-Math.PI / 2);
-  const label = view === "loss" ? "均方误差" : view === "residual" ? "残差" : "预测 / 真实值";
-  ctx.fillText(label, 0, 0);
-  ctx.restore();
+  ctx.fillText(
+    view === "loss" ? "均方误差" : view === "residual" ? "残差" : "预测 / 真实值",
+    bounds.left + 10,
+    bounds.top + 18,
+  );
+  ctx.textAlign = "right";
+  ctx.fillText(view === "loss" ? "训练轮次" : "特征 x", bounds.right - 8, bounds.bottom - 10);
+  ctx.textAlign = "left";
   ctx.restore();
 }
 

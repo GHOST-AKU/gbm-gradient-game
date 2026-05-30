@@ -69,6 +69,7 @@ body::before {
 
 .lab-switch {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
   padding: 8px 18px 0;
@@ -86,6 +87,77 @@ body::before {
   font-size: 12px;
   font-weight: 900;
   text-decoration: none;
+}
+
+.home-page {
+  overflow: auto;
+}
+
+.home-shell {
+  width: min(1180px, calc(100vw - 32px));
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 42px 0;
+}
+
+.home-hero {
+  margin-bottom: 22px;
+}
+
+.home-hero h1 {
+  max-width: 860px;
+  margin-bottom: 12px;
+  font-size: clamp(42px, 7vw, 86px);
+}
+
+.home-hero p:last-child {
+  max-width: 720px;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+.lab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+  gap: 14px;
+}
+
+.lab-grid a {
+  display: grid;
+  align-content: start;
+  min-height: 148px;
+  padding: 18px;
+  border: 3px solid #33476f;
+  background: rgba(17, 24, 39, 0.96);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.lab-grid a:hover {
+  transform: translate(-2px, -2px);
+  border-color: var(--accent);
+  box-shadow: 10px 10px 0 var(--pixel-shadow);
+}
+
+.lab-grid span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.lab-grid strong {
+  margin: 12px 0 10px;
+  font-size: 22px;
+}
+
+.lab-grid small {
+  color: #c8d1de;
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .lab-switch a.active {
@@ -647,8 +719,10 @@ button.secondary {
   overflow: visible;
 }
 
+.gbm-page .control-panel,
 .kmeans-page .control-panel,
-.tree-page .control-panel {
+.tree-page .control-panel,
+.compact-lab-page .control-panel {
   align-self: start;
   grid-template-rows: auto auto auto auto;
   gap: 8px;
@@ -670,8 +744,10 @@ button.secondary {
   padding: 8px;
 }
 
+.gbm-page .panel-block,
 .kmeans-page .panel-block,
-.tree-page .panel-block {
+.tree-page .panel-block,
+.compact-lab-page .panel-block {
   padding: 8px;
 }
 
@@ -682,8 +758,10 @@ button.secondary {
   box-shadow: none;
 }
 
+.gbm-page .canvas-wrap,
 .kmeans-page .canvas-wrap,
-.tree-page .canvas-wrap {
+.tree-page .canvas-wrap,
+.compact-lab-page .canvas-wrap {
   margin: 0 22px;
   border: 0;
   background: transparent;
@@ -722,7 +800,8 @@ button.secondary {
 
 .svm-page .control-panel .chart-data-card,
 .kmeans-page .control-panel .chart-data-card,
-.tree-page .control-panel .chart-data-card {
+.tree-page .control-panel .chart-data-card,
+.compact-lab-page .control-panel .chart-data-card {
   grid-template-columns: 1fr;
   gap: 7px;
   margin: 0;
@@ -757,7 +836,8 @@ button.secondary {
 
 .svm-page .control-panel .boundary-stats,
 .kmeans-page .control-panel .boundary-stats,
-.tree-page .control-panel .boundary-stats {
+.tree-page .control-panel .boundary-stats,
+.compact-lab-page .control-panel .boundary-stats {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
@@ -803,12 +883,14 @@ button.secondary {
   min-height: 29px;
 }
 
+.gbm-page .log-card,
 .svm-page .log-card {
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
 }
 
+.gbm-page .log-card .panel-heading,
 .svm-page .log-card .panel-heading {
   display: grid;
   grid-template-columns: auto auto auto;
@@ -816,6 +898,7 @@ button.secondary {
   margin-bottom: 5px;
 }
 
+.gbm-page .log-card .empty-log,
 .svm-page .log-card .empty-log {
   margin: 0;
   color: var(--muted);
@@ -823,6 +906,7 @@ button.secondary {
   line-height: 1.2;
 }
 
+.gbm-page .round-log,
 .svm-page .round-log {
   height: auto;
   min-height: 0;

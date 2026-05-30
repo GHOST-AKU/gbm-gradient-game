@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>逻辑回归训练场</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css?v=26" />
+  </head>
+  <body class="logistic-page compact-lab-page">
+    <nav class="lab-switch" aria-label="切换训练场">
+      <a href="./index.html">首页</a>
+      <a href="./gbm.html">GBM 训练场</a>
+      <a href="./svm.html">SVM 训练场</a>
+      <a href="./kmeans.html">K-Means 训练场</a>
+      <a href="./tree.html">决策树训练场</a>
+      <a href="./linear.html">线性回归</a>
+      <a href="./logistic.html" class="active">逻辑回归</a>
+      <a href="./nn.html">神经网络</a>
+      <a href="./forest.html">随机森林</a>
+    </nav>
+    <main class="game-shell">
+      <section class="stage" aria-label="逻辑回归交互画布">
+        <div class="topbar">
+          <div class="title-group">
+            <p class="eyebrow">Sigmoid Gate</p>
+            <h1>逻辑回归训练场</h1>
+            <p id="levelSubtitle" class="subtitle">把线性得分压进 sigmoid，输出属于正类的概率。</p>
+          </div>
+          <div class="meter-row" aria-live="polite">
+            <div class="score-card"><span>分类得分</span><strong id="scoreValue">--</strong></div>
+            <div class="score-card compact"><span>轮次</span><strong id="roundValue">0</strong></div>
+          </div>
+        </div>
+        <div id="toast" class="toast" role="status">训练权重，让概率边界穿过两类之间。</div>
+        <div class="canvas-wrap"><canvas id="chart" width="980" height="520"></canvas></div>
+        <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
+          <span id="latestText">未训练：所有点先按初始概率判断。</span>
+          <span id="bestLabel">等待开始</span>
+        </div>
+        <div class="legend" aria-label="图例">
+          <span><i class="sample-key positive-key"></i>正类</span>
+          <span><i class="sample-key negative-key"></i>负类</span>
+          <span><i class="line boundary-key"></i>概率 0.5</span>
+          <span><i class="bar residual"></i>错分/高损失</span>
+        </div>
+      </section>
+      <aside class="control-panel" aria-label="游戏控制">
+        <section class="panel-block mission-card">
+          <div class="panel-heading"><h2>关卡</h2><span id="targetLabel">目标 --</span></div>
+          <div id="levelPicker" class="choice-grid"></div>
+          <p id="missionText">让高概率区域覆盖正类，低概率区域覆盖负类。</p>
+          <div class="progress-track" aria-hidden="true"><div id="progressFill"></div></div>
+        </section>
+        <section class="panel-block view-card">
+          <h2>观察方式</h2>
+          <div id="viewPicker" class="segmented">
+            <button type="button" data-view="prob" class="active">概率</button>
+            <button type="button" data-view="boundary">边界</button>
+            <button type="button" data-view="loss">损失</button>
+            <button type="button" data-view="weights">权重</button>
+          </div>
+        </section>
+        <section class="panel-block controls-card">
+          <h2>训练控制</h2>
+          <label class="slider-row" for="learningRate"><span>学习率</span><strong id="rateLabel">0.50</strong></label>
+          <input id="learningRate" type="range" min="0.1" max="1.2" value="0.5" step="0.1" />
+          <label class="slider-row" for="regularization"><span>正则强度</span><strong id="regLabel">0.01</strong></label>
+          <input id="regularization" type="range" min="0" max="0.08" value="0.01" step="0.01" />
+          <div class="button-grid">
+            <button id="stepBtn" type="button">训练一步</button>
+            <button id="autoBtn" type="button" class="secondary">自动训练</button>
+            <button id="undoBtn" type="button" class="secondary">撤回一步</button>
+            <button id="resetBtn" type="button" class="secondary">重置</button>
+            <button id="nextLevelBtn" type="button" class="secondary wide">下一关</button>
+          </div>
+        </section>
+        <section class="panel-block boundary-card chart-data-card">
+          <div class="panel-heading"><h2>分类数据</h2><span id="formulaLabel">p=sigmoid(w·x+b)</span></div>
+          <div class="boundary-stats">
+            <span><b id="accuracyLabel">--</b><small>正确率</small></span>
+            <span><b id="lossLabel">--</b><small>交叉熵</small></span>
+            <span><b id="marginLabel">--</b><small>信心</small></span>
+            <span><b id="wLabel">--</b><small>权重</small></span>
+            <span><b id="biasLabel">0.00</b><small>偏置</small></span>
+            <span><b id="bestScoreLabel">--</b><small>最佳</small></span>
+          </div>
+        </section>
+      </aside>
+    </main>
+    <script src="./logistic.js?v=1"></script>
+  </body>
+</html>

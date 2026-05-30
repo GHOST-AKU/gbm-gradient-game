@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>神经网络训练场</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css?v=26" />
+  </head>
+  <body class="nn-page compact-lab-page">
+    <nav class="lab-switch" aria-label="切换训练场">
+      <a href="./index.html">首页</a>
+      <a href="./gbm.html">GBM 训练场</a>
+      <a href="./svm.html">SVM 训练场</a>
+      <a href="./kmeans.html">K-Means 训练场</a>
+      <a href="./tree.html">决策树训练场</a>
+      <a href="./linear.html">线性回归</a>
+      <a href="./logistic.html">逻辑回归</a>
+      <a href="./nn.html" class="active">神经网络</a>
+      <a href="./forest.html">随机森林</a>
+    </nav>
+    <main class="game-shell">
+      <section class="stage" aria-label="神经网络交互画布">
+        <div class="topbar">
+          <div class="title-group">
+            <p class="eyebrow">Neural Circuit</p>
+            <h1>神经网络训练场</h1>
+            <p id="levelSubtitle" class="subtitle">隐藏层先组合特征，反向传播再把误差推回权重。</p>
+          </div>
+          <div class="meter-row" aria-live="polite">
+            <div class="score-card"><span>网络得分</span><strong id="scoreValue">--</strong></div>
+            <div class="score-card compact"><span>批次</span><strong id="roundValue">0</strong></div>
+          </div>
+        </div>
+        <div id="toast" class="toast" role="status">训练一个小型 MLP，观察非线性边界如何长出来。</div>
+        <div class="canvas-wrap"><canvas id="chart" width="980" height="520"></canvas></div>
+        <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
+          <span id="latestText">未训练：隐藏层还没有形成有效特征。</span>
+          <span id="bestLabel">等待开始</span>
+        </div>
+        <div class="legend" aria-label="图例">
+          <span><i class="sample-key positive-key"></i>正类</span>
+          <span><i class="sample-key negative-key"></i>负类</span>
+          <span><i class="line boundary-key"></i>决策边界</span>
+          <span><i class="line learner"></i>隐藏神经元</span>
+        </div>
+      </section>
+      <aside class="control-panel" aria-label="游戏控制">
+        <section class="panel-block mission-card">
+          <div class="panel-heading"><h2>关卡</h2><span id="targetLabel">目标 --</span></div>
+          <div id="levelPicker" class="choice-grid"></div>
+          <p id="missionText">用隐藏层弯出非线性边界，解决线性模型切不开的样本。</p>
+          <div class="progress-track" aria-hidden="true"><div id="progressFill"></div></div>
+        </section>
+        <section class="panel-block view-card">
+          <h2>观察方式</h2>
+          <div id="viewPicker" class="segmented">
+            <button type="button" data-view="field" class="active">边界</button>
+            <button type="button" data-view="neurons">神经元</button>
+            <button type="button" data-view="loss">损失</button>
+            <button type="button" data-view="weights">权重</button>
+          </div>
+        </section>
+        <section class="panel-block controls-card">
+          <h2>训练控制</h2>
+          <label class="slider-row" for="learningRate"><span>学习率</span><strong id="rateLabel">0.35</strong></label>
+          <input id="learningRate" type="range" min="0.05" max="0.8" value="0.35" step="0.05" />
+          <label class="slider-row" for="epochsPerStep"><span>每轮 epoch</span><strong id="epochLabel">30</strong></label>
+          <input id="epochsPerStep" type="range" min="5" max="60" value="30" step="5" />
+          <div class="button-grid">
+            <button id="stepBtn" type="button">训练一批</button>
+            <button id="autoBtn" type="button" class="secondary">自动训练</button>
+            <button id="undoBtn" type="button" class="secondary">撤回一批</button>
+            <button id="resetBtn" type="button" class="secondary">重置</button>
+            <button id="nextLevelBtn" type="button" class="secondary wide">下一关</button>
+          </div>
+        </section>
+        <section class="panel-block boundary-card chart-data-card">
+          <div class="panel-heading"><h2>网络数据</h2><span id="formulaLabel">2-4-1 MLP</span></div>
+          <div class="boundary-stats">
+            <span><b id="accuracyLabel">--</b><small>正确率</small></span>
+            <span><b id="lossLabel">--</b><small>损失</small></span>
+            <span><b id="confidenceLabel">--</b><small>信心</small></span>
+            <span><b id="hiddenLabel">4</b><small>隐藏元</small></span>
+            <span><b id="normLabel">--</b><small>权重强度</small></span>
+            <span><b id="bestScoreLabel">--</b><small>最佳</small></span>
+          </div>
+        </section>
+      </aside>
+    </main>
+    <script src="./nn.js?v=1"></script>
+  </body>
+</html>

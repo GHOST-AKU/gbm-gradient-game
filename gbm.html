@@ -5,14 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>梯度提升机训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=24" />
+    <link rel="stylesheet" href="./styles.css?v=26" />
   </head>
-  <body>
+  <body class="gbm-page">
     <nav class="lab-switch" aria-label="切换训练场">
+      <a href="./index.html">首页</a>
       <a href="./gbm.html" class="active">GBM 训练场</a>
       <a href="./svm.html">SVM 训练场</a>
       <a href="./kmeans.html">K-Means 训练场</a>
       <a href="./tree.html">决策树训练场</a>
+      <a href="./linear.html">线性回归</a>
+      <a href="./logistic.html">逻辑回归</a>
+      <a href="./nn.html">神经网络</a>
+      <a href="./forest.html">随机森林</a>
     </nav>
     <main class="game-shell">
       <section class="stage" aria-label="梯度提升机交互画布">
@@ -125,6 +130,6 @@
       </div>
     </section>
 
-    <script src="./app.js?v=10"></script>
+    <script src="./app.js?v=11"></script>
   </body>
 </html>

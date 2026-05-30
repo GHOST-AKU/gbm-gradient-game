@@ -3,29 +3,60 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="refresh" content="0; url=./gbm.html" />
-    <title>打开 GBM 训练场</title>
-    <link rel="canonical" href="./gbm.html" />
-    <style>
-      body {
-        display: grid;
-        min-height: 100vh;
-        margin: 0;
-        place-items: center;
-        background: #070812;
-        color: #fff3d6;
-        font-family: "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", monospace;
-      }
-
-      a {
-        color: #22f0a4;
-      }
-    </style>
+    <title>机器学习训练场</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css?v=26" />
   </head>
-  <body>
-    <p>正在打开 <a href="./gbm.html">GBM 训练场</a>...</p>
-    <script>
-      window.location.replace("./gbm.html");
-    </script>
+  <body class="home-page">
+    <main class="home-shell">
+      <section class="home-hero" aria-label="训练场大厅">
+        <p class="eyebrow">Machine Learning Arcade</p>
+        <h1>机器学习训练场</h1>
+        <p>选一个算法，像玩街机一样观察它如何学习、犯错、收敛和通关。</p>
+      </section>
+
+      <nav class="lab-grid" aria-label="选择训练场">
+        <a href="./gbm.html">
+          <span>Boost Lab</span>
+          <strong>GBM 梯度提升机</strong>
+          <small>一棵棵弱树串联补错。</small>
+        </a>
+        <a href="./svm.html">
+          <span>SVM Arcade</span>
+          <strong>SVM 最大间隔</strong>
+          <small>把边界推到两类之间。</small>
+        </a>
+        <a href="./kmeans.html">
+          <span>Cluster Arcade</span>
+          <strong>K-Means 聚类</strong>
+          <small>拖动质心，占住样本地盘。</small>
+        </a>
+        <a href="./tree.html">
+          <span>Tree Split Lab</span>
+          <strong>决策树</strong>
+          <small>用最少切分得到更纯叶子。</small>
+        </a>
+        <a href="./linear.html">
+          <span>Line Fit Lab</span>
+          <strong>线性回归</strong>
+          <small>让直线压低残差平方。</small>
+        </a>
+        <a href="./logistic.html">
+          <span>Sigmoid Gate</span>
+          <strong>逻辑回归</strong>
+          <small>用概率边界完成分类。</small>
+        </a>
+        <a href="./nn.html">
+          <span>Neural Circuit</span>
+          <strong>神经网络</strong>
+          <small>前向点亮，反向修权重。</small>
+        </a>
+        <a href="./forest.html">
+          <span>Forest Vote</span>
+          <strong>随机森林</strong>
+          <small>多棵树并联投票抗噪声。</small>
+        </a>
+      </nav>
+    </main>
   </body>
 </html>
