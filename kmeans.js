@@ -35,6 +35,7 @@ const levels = [
     shortName: "三团",
     name: "入门：三块地盘",
     target: 0.82,
+    baselineScale: 4.8,
     k: 3,
     description: "三群样本边界清楚，拖动质心到大致中心后再迭代。",
     seeds: [[-0.72, 0.58], [0.0, -0.58], [0.7, 0.48]],
@@ -48,6 +49,7 @@ const levels = [
     shortName: "拉长",
     name: "进阶：拉长簇",
     target: 0.76,
+    baselineScale: 4.4,
     k: 3,
     description: "有些簇像长条，K-Means 会用圆形地盘近似它们。",
     seeds: [[-0.72, -0.5], [-0.04, 0.38], [0.72, -0.1]],
@@ -61,6 +63,7 @@ const levels = [
     shortName: "四岛",
     name: "挑战：四座小岛",
     target: 0.8,
+    baselineScale: 4.7,
     k: 4,
     description: "四个小簇靠得更近，空簇和错误归属会更明显。",
     seeds: [[-0.72, 0.56], [-0.48, -0.5], [0.42, 0.42], [0.68, -0.46]],
@@ -132,8 +135,10 @@ function metrics(assignments = state.assignments, centroids = state.centroids) {
     const dy = centroid.y - centroid.lastY;
     return sum + Math.sqrt(dx * dx + dy * dy);
   }, 0);
-  const score = Math.max(0, Math.min(0.99, 1 - inertia / state.baseline - empty * 0.08));
-  const stability = Math.max(0, Math.min(1, 1 - movement / Math.max(0.02, centroids.length * 0.2)));
+  const compactness = Math.max(0, Math.min(1, 1 - inertia / state.baseline));
+  const stability = state.round ? Math.max(0, Math.min(1, 1 - movement / Math.max(0.02, centroids.length * 0.2))) : 0;
+  const clusterHealth = empty ? 0 : 1;
+  const score = Math.max(0, Math.min(0.99, compactness * 0.55 + stability * 0.39 + clusterHealth * 0.06 - empty * 0.08));
   return { inertia, empty, movement, score, stability, counts };
 }
 
@@ -154,7 +159,7 @@ function resetGame() {
     history: [],
     inertiaHistory: [],
   };
-  state.baseline = Math.max(0.08, metrics(assignments, centroids).inertia * 1.55);
+  state.baseline = Math.max(0.08, metrics(assignments, centroids).inertia * level.baselineScale);
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "拖动质心，或让 K-Means 自动完成“分配 -> 移动”的循环。";
@@ -453,7 +458,7 @@ function drawAxes(bounds) {
 function drawLoss(bounds) {
   drawGrid(bounds);
   const values = state.inertiaHistory.length ? state.inertiaHistory : [metrics().inertia];
-  const max = Math.max(...values, state.baseline / 1.3);
+  const max = Math.max(...values, state.baseline / levels[currentLevel].baselineScale);
   ctx.save();
   ctx.strokeStyle = "#22f0a4";
   ctx.lineWidth = 5;

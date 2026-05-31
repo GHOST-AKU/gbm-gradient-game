@@ -55,18 +55,18 @@
         <section class="panel-block view-card">
           <h2>观察方式</h2>
           <div id="viewPicker" class="segmented">
-            <button type="button" data-view="field" class="active">边界</button>
+            <button type="button" data-view="field">边界</button>
             <button type="button" data-view="neurons">神经元</button>
             <button type="button" data-view="loss">损失</button>
-            <button type="button" data-view="weights">权重</button>
+            <button type="button" data-view="weights" class="active">网络</button>
           </div>
         </section>
         <section class="panel-block controls-card">
           <h2>训练控制</h2>
           <label class="slider-row" for="learningRate"><span>学习率</span><strong id="rateLabel">0.35</strong></label>
           <input id="learningRate" type="range" min="0.05" max="0.8" value="0.35" step="0.05" />
-          <label class="slider-row" for="epochsPerStep"><span>每轮 epoch</span><strong id="epochLabel">30</strong></label>
-          <input id="epochsPerStep" type="range" min="5" max="60" value="30" step="5" />
+          <label class="slider-row" for="epochsPerStep"><span>每轮 epoch</span><strong id="epochLabel">10</strong></label>
+          <input id="epochsPerStep" type="range" min="5" max="60" value="10" step="5" />
           <div class="button-grid">
             <button id="stepBtn" type="button">训练一批</button>
             <button id="autoBtn" type="button" class="secondary">自动训练</button>
@@ -88,6 +88,6 @@
         </section>
       </aside>
     </main>
-    <script src="./nn.js?v=1"></script>
+    <script src="./nn.js?v=2"></script>
   </body>
 </html>

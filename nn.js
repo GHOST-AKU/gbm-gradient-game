@@ -36,10 +36,11 @@ const levels = [
 
 let levelIndex = 0;
 let state;
-let view = "field";
+let view = "weights";
 let autoTimer = null;
 
 function sigmoid(x) { return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, x)))); }
+function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function makeNet() {
   return {
     h: [
@@ -73,10 +74,24 @@ function metrics() {
   return { loss, accuracy, confidence, score };
 }
 
+function hardestPointIndex() {
+  let bestIndex = 0;
+  let bestError = -1;
+  state.points.forEach((point, index) => {
+    const out = forward(point);
+    const error = Math.abs(out.p - point.label);
+    if (error > bestError) {
+      bestError = error;
+      bestIndex = index;
+    }
+  });
+  return bestIndex;
+}
+
 function resetGame() {
   stopAuto();
   const level = levels[levelIndex];
-  state = { points: level.points.map(([x, y, label]) => ({ x, y, label })), net: makeNet(), round: 0, best: 0, history: [], lossHistory: [] };
+  state = { points: level.points.map(([x, y, label]) => ({ x, y, label })), net: makeNet(), round: 0, best: 0, history: [], lossHistory: [], signalPointIndex: 0 };
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "每批训练会先前向计算概率，再把误差反向传回隐藏层。";
@@ -91,7 +106,7 @@ function cloneNet(net) {
 }
 
 function trainStep() {
-  state.history.push({ net: cloneNet(state.net), round: state.round, best: state.best, lossHistory: [...state.lossHistory] });
+  state.history.push({ net: cloneNet(state.net), round: state.round, best: state.best, lossHistory: [...state.lossHistory], signalPointIndex: state.signalPointIndex });
   const lr = Number(learningRate.value);
   for (let epoch = 0; epoch < Number(epochsPerStep.value); epoch += 1) {
     const grads = { h: state.net.h.map(() => ({ wx: 0, wy: 0, b: 0, v: 0 })), outB: 0 };
@@ -118,6 +133,7 @@ function trainStep() {
   }
   state.round += 1;
   const result = metrics();
+  state.signalPointIndex = hardestPointIndex();
   state.best = Math.max(state.best, result.score);
   state.lossHistory.push(result.loss);
   toast.textContent = `第 ${state.round} 批：误差反向修正权重，损失 ${result.loss.toFixed(3)}。`;
@@ -141,6 +157,7 @@ function undo() {
   state.round = previous.round;
   state.best = previous.best;
   state.lossHistory = previous.lossHistory;
+  state.signalPointIndex = previous.signalPointIndex || 0;
   draw();
   updateHud();
 }
@@ -182,7 +199,7 @@ function renderPickers() {
 function setView(next) {
   view = next;
   viewPicker.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
-  const text = { field: "边界视图：背景显示网络输出概率。", neurons: "神经元视图：亮线展示隐藏单元各自学到的切分方向。", loss: "损失视图：曲线下降说明反向传播有效。", weights: "权重视图：线条越亮，输出层越依赖该隐藏单元。" }[view];
+  const text = { field: "边界视图：背景显示网络输出概率。", neurons: "神经元视图：亮线展示隐藏单元各自学到的切分方向。", loss: "损失视图：曲线下降说明反向传播有效。", weights: "网络视图：2 个输入、4 个隐藏神经元、1 个输出，线宽表示权重，红色脉冲表示反向误差。" }[view];
   toast.textContent = text; latestText.textContent = text; draw();
 }
 
@@ -209,10 +226,11 @@ function draw() {
   else {
     drawField(b);
     drawGrid(b);
-    if (view === "neurons" || view === "weights") drawNeuronLines(b);
+    if (view === "neurons") drawNeuronLines(b);
     drawPoints(b);
   }
   drawAxes(b);
+  if (view === "weights") drawNetworkPanel(b);
 }
 
 function drawField(b) {
@@ -264,6 +282,139 @@ function drawAxes(b) {
   ctx.strokeStyle = "rgba(255,243,214,0.58)"; ctx.fillStyle = "rgba(255,243,214,0.72)"; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(b.left, b.top); ctx.lineTo(b.left, b.bottom); ctx.lineTo(b.right, b.bottom); ctx.stroke();
   ctx.font = "12px Courier New, Microsoft YaHei, monospace"; ctx.fillText("特征 x2", b.left + 10, b.top + 18); ctx.textAlign = "right"; ctx.fillText("特征 x1", b.right - 8, b.bottom - 10); ctx.textAlign = "left";
+}
+
+function drawNetworkPanel(b) {
+  const panel = {
+    x: Math.round(b.left + b.width * 0.53),
+    y: Math.round(b.top + 22),
+    w: Math.round(b.width * 0.43),
+    h: Math.round(b.height - 46),
+  };
+  const sample = state.points[state.signalPointIndex] || state.points[0];
+  const out = forward(sample);
+  const dz = out.p - sample.label;
+  const inputValues = [sample.x, sample.y];
+  const xIn = panel.x + 52;
+  const xHidden = panel.x + panel.w * 0.5;
+  const xOut = panel.x + panel.w - 54;
+  const inputY = [panel.y + panel.h * 0.34, panel.y + panel.h * 0.66];
+  const hiddenY = state.net.h.map((_, index) => panel.y + panel.h * (0.2 + index * 0.2));
+  const outputY = panel.y + panel.h * 0.5;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(5,6,12,0.86)";
+  ctx.fillRect(panel.x, panel.y, panel.w, panel.h);
+  ctx.strokeStyle = "#fff3d6";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(panel.x + 0.5, panel.y + 0.5, panel.w - 1, panel.h - 1);
+  ctx.font = "12px Courier New, Microsoft YaHei, monospace";
+  ctx.fillStyle = "#fff3d6";
+  ctx.fillText("2-4-1 NETWORK", panel.x + 12, panel.y + 18);
+  ctx.fillStyle = "rgba(255,243,214,0.72)";
+  ctx.fillText(`sample ${state.signalPointIndex + 1}  y=${sample.label}  p=${out.p.toFixed(2)}`, panel.x + 12, panel.y + panel.h - 12);
+
+  state.net.h.forEach((unit, index) => {
+    drawWeightLine(xIn, inputY[0], xHidden, hiddenY[index], unit.wx, `x1 ${signed(unit.wx)}`);
+    drawWeightLine(xIn, inputY[1], xHidden, hiddenY[index], unit.wy, `x2 ${signed(unit.wy)}`);
+    drawWeightLine(xHidden, hiddenY[index], xOut, outputY, unit.v, `v ${signed(unit.v)}`);
+  });
+
+  inputValues.forEach((value, index) => {
+    drawNode(xIn, inputY[index], 16, value, `x${index + 1}`, value.toFixed(2), "#3bd7ff");
+  });
+
+  state.net.h.forEach((unit, index) => {
+    const activation = out.hidden[index];
+    const hiddenError = dz * unit.v * (1 - activation * activation);
+    drawNode(xHidden, hiddenY[index], 18, activation, `H${index + 1}`, activation.toFixed(2), unit.v >= 0 ? "#22f0a4" : "#ffd447");
+    drawErrorBar(xHidden + 25, hiddenY[index], hiddenError);
+  });
+
+  drawNode(xOut, outputY, 20, out.p * 2 - 1, "OUT", out.p.toFixed(2), out.p >= 0.5 ? "#22f0a4" : "#3bd7ff");
+  drawErrorRing(xOut, outputY, dz);
+  drawBackpropArrow(xOut - 26, outputY + 36, xHidden + 30, outputY + 36, dz);
+  ctx.restore();
+}
+
+function drawWeightLine(x1, y1, x2, y2, weight, label) {
+  const strength = clamp(Math.abs(weight) / 2.4, 0.12, 1);
+  ctx.strokeStyle = weight >= 0 ? "#22f0a4" : "#3bd7ff";
+  ctx.globalAlpha = 0.28 + strength * 0.64;
+  ctx.lineWidth = 2 + strength * 6;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  if (strength > 0.42) {
+    ctx.fillStyle = weight >= 0 ? "#baffdf" : "#bdf2ff";
+    ctx.font = "10px Courier New, Microsoft YaHei, monospace";
+    ctx.fillText(label, x1 + (x2 - x1) * 0.46, y1 + (y2 - y1) * 0.46 - 3);
+  }
+}
+
+function drawNode(x, y, r, activation, name, value, color) {
+  const pulse = clamp(Math.abs(activation), 0, 1);
+  ctx.fillStyle = "#05060c";
+  ctx.fillRect(x - r - 3, y - r - 3, (r + 3) * 2, (r + 3) * 2);
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.28 + pulse * 0.62;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = "#fff3d6";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x - r, y - r, r * 2, r * 2);
+  ctx.fillStyle = "#fff3d6";
+  ctx.font = "11px Courier New, Microsoft YaHei, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(name, x, y - r - 7);
+  ctx.fillText(value, x, y + 4);
+  ctx.textAlign = "left";
+}
+
+function drawErrorBar(x, y, error) {
+  const size = clamp(Math.abs(error) * 80, 3, 24);
+  ctx.fillStyle = error >= 0 ? "#ff5f57" : "#ffd447";
+  ctx.globalAlpha = 0.45 + clamp(Math.abs(error) * 5, 0, 0.5);
+  ctx.fillRect(x, y - size / 2, 6, size);
+  ctx.globalAlpha = 1;
+}
+
+function drawErrorRing(x, y, error) {
+  const strength = clamp(Math.abs(error), 0, 1);
+  ctx.strokeStyle = error >= 0 ? "#ff5f57" : "#ffd447";
+  ctx.lineWidth = 2 + strength * 8;
+  ctx.strokeRect(x - 28, y - 28, 56, 56);
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.font = "11px Courier New, Microsoft YaHei, monospace";
+  ctx.textAlign = "center";
+  ctx.fillText(`err ${signed(error)}`, x, y + 42);
+  ctx.textAlign = "left";
+}
+
+function drawBackpropArrow(x1, y1, x2, y2, error) {
+  ctx.strokeStyle = error >= 0 ? "#ff5f57" : "#ffd447";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 + 10, y2 - 6);
+  ctx.lineTo(x2 + 10, y2 + 6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.font = "11px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText("backprop error", x2 + 16, y2 + 4);
+}
+
+function signed(value) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}`;
 }
 
 function drawLoss(b) {

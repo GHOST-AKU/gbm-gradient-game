@@ -186,25 +186,51 @@ function calcMse(predictions = state.predictions) {
 
 function buildWeakLearner(segments) {
   const residuals = targetPoints.map((point, index) => point.y - state.predictions[index]);
-  const learner = [];
+  const ordered = targetPoints
+    .map((point, index) => ({ point, index, residual: residuals[index] }))
+    .sort((a, b) => a.point.x - b.point.x);
+  const leafCount = Math.max(1, Math.min(segments, ordered.length));
+  const prefix = [0];
+  const prefixSquare = [0];
 
-  for (let segment = 0; segment < segments; segment += 1) {
-    const minX = segment / segments;
-    const maxX = (segment + 1) / segments;
-    const indexes = targetPoints
-      .map((point, index) => ({ point, index }))
-      .filter(({ point }) => point.x >= minX && (segment === segments - 1 ? point.x <= maxX : point.x < maxX))
-      .map(({ index }) => index);
+  ordered.forEach((item, index) => {
+    prefix[index + 1] = prefix[index] + item.residual;
+    prefixSquare[index + 1] = prefixSquare[index] + item.residual * item.residual;
+  });
 
-    const avgResidual =
-      indexes.reduce((sum, index) => sum + residuals[index], 0) / Math.max(indexes.length, 1);
+  const groupCost = (start, end) => {
+    const count = end - start;
+    const sum = prefix[end] - prefix[start];
+    const square = prefixSquare[end] - prefixSquare[start];
+    return square - (sum * sum) / Math.max(1, count);
+  };
 
-    indexes.forEach((index) => {
-      learner[index] = avgResidual;
-    });
+  const dp = Array.from({ length: leafCount + 1 }, () => Array(ordered.length + 1).fill(Infinity));
+  const splitAt = Array.from({ length: leafCount + 1 }, () => Array(ordered.length + 1).fill(0));
+  dp[0][0] = 0;
+
+  for (let leaf = 1; leaf <= leafCount; leaf += 1) {
+    for (let end = leaf; end <= ordered.length; end += 1) {
+      for (let start = leaf - 1; start < end; start += 1) {
+        const cost = dp[leaf - 1][start] + groupCost(start, end);
+        if (cost < dp[leaf][end]) {
+          dp[leaf][end] = cost;
+          splitAt[leaf][end] = start;
+        }
+      }
+    }
   }
 
-  return learner.map((value) => (Number.isFinite(value) ? value : 0));
+  const learner = Array(targetPoints.length).fill(0);
+  let end = ordered.length;
+  for (let leaf = leafCount; leaf >= 1; leaf -= 1) {
+    const start = splitAt[leaf][end];
+    const avgResidual = (prefix[end] - prefix[start]) / Math.max(1, end - start);
+    for (let i = start; i < end; i += 1) learner[ordered[i].index] = avgResidual;
+    end = start;
+  }
+
+  return learner;
 }
 
 function calcOverfitRisk(rate, segments, nextRound) {

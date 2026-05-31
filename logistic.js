@@ -249,6 +249,8 @@ function drawLoss(b) {
   ctx.strokeStyle = "#22f0a4"; ctx.lineWidth = 5; ctx.beginPath();
   values.forEach((value, index) => { const x = b.left + (index / Math.max(1, values.length - 1)) * b.width; const y = b.bottom - (1 - value / max) * b.height; if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
   ctx.stroke();
+  drawBoundary(b);
+  drawPoints(b);
 }
 
 learningRate.addEventListener("input", updateHud);

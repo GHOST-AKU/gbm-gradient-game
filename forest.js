@@ -89,6 +89,25 @@ function buildTree(points, depth, maxTreeDepth, rand, featureCount) {
   };
 }
 
+function treeStats(tree, stats = { splits: 0, xSplits: 0, ySplits: 0, leaves: 0, depth: 0 }) {
+  if (tree.leaf) {
+    stats.leaves += 1;
+    return stats;
+  }
+  stats.splits += 1;
+  stats.xSplits += tree.axis === "x" ? 1 : 0;
+  stats.ySplits += tree.axis === "y" ? 1 : 0;
+  stats.depth = Math.max(stats.depth, 1);
+  const left = treeStats(tree.left, { splits: 0, xSplits: 0, ySplits: 0, leaves: 0, depth: 0 });
+  const right = treeStats(tree.right, { splits: 0, xSplits: 0, ySplits: 0, leaves: 0, depth: 0 });
+  stats.splits += left.splits + right.splits;
+  stats.xSplits += left.xSplits + right.xSplits;
+  stats.ySplits += left.ySplits + right.ySplits;
+  stats.leaves += left.leaves + right.leaves;
+  stats.depth = Math.max(stats.depth, left.depth + 1, right.depth + 1);
+  return stats;
+}
+
 function predictTree(tree, point) {
   if (tree.leaf) return tree.label;
   return predictTree(point[tree.axis] <= tree.value ? tree.left : tree.right, point);
@@ -104,6 +123,40 @@ function voteMargin(point) {
   if (!state.trees.length) return 0;
   const votes = state.trees.reduce((sum, tree) => sum + (predictTree(tree, point) ? 1 : -1), 0);
   return Math.abs(votes) / state.trees.length;
+}
+
+function voteDetails(point, trees = state.trees) {
+  let positive = 0, negative = 0;
+  const votes = trees.map((tree) => {
+    const vote = predictTree(tree, point);
+    if (vote) positive += 1;
+    else negative += 1;
+    return vote;
+  });
+  return { votes, positive, negative, label: positive >= negative ? 1 : 0, margin: trees.length ? Math.abs(positive - negative) / trees.length : 0 };
+}
+
+function focusPoint() {
+  if (!state.trees.length) return state.points[0];
+  return [...state.points].sort((a, b) => voteMargin(a) - voteMargin(b))[0];
+}
+
+function stabilityTrend() {
+  const trend = [];
+  for (let count = 1; count <= state.trees.length; count += 1) {
+    const trees = state.trees.slice(0, count);
+    let margin = 0, flips = 0;
+    state.points.forEach((point) => {
+      const current = voteDetails(point, trees);
+      margin += current.margin;
+      if (count > 1) {
+        const previous = voteDetails(point, state.trees.slice(0, count - 1));
+        if (previous.label !== current.label) flips += 1;
+      }
+    });
+    trend.push({ count, margin: margin / state.points.length, flips });
+  }
+  return trend;
 }
 
 function metrics() {
@@ -137,6 +190,10 @@ function trainTree() {
   const bag = Array.from({ length: state.points.length }, () => Math.floor(rand() * state.points.length));
   const sample = bag.map((index) => state.points[index]);
   const tree = buildTree(sample, 0, Number(maxDepth.value), rand, Number(featureRate.value));
+  tree.id = state.round + 1;
+  tree.uniqueSamples = new Set(bag).size;
+  tree.featureMode = Number(featureRate.value) === 1 ? "random-1" : "x+y";
+  tree.stats = treeStats(tree);
   state.trees.push(tree);
   state.bags.push(bag);
   state.round += 1;
@@ -221,7 +278,12 @@ function renderPickers() {
 function setView(next) {
   view = next;
   viewPicker.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
-  const text = { vote: "投票视图：背景显示森林多数票分类。", trees: "树视图：显示最新一棵树的切分线。", margin: "信心视图：颜色越亮，投票越一致。", errors: "错分视图：红框标出当前森林还没投对的样本。" }[view];
+  const text = {
+    vote: "投票视图：左侧是多数投票边界，右侧逐棵树亮出票箱。",
+    trees: "森林视图：每棵树都有自己的 bootstrap 样本和切分纹路。",
+    margin: "信心视图：颜色越亮，越多树投成同一边，森林越稳定。",
+    errors: "错分视图：红框标出当前森林还没投对的样本。"
+  }[view];
   toast.textContent = text; latestText.textContent = text; draw();
 }
 
@@ -235,7 +297,35 @@ function fitCanvas() {
   draw();
 }
 
-function bounds() { const rect = canvas.getBoundingClientRect(); return { left: 4, top: 4, right: rect.width - 6, bottom: rect.height - 10, width: rect.width - 10, height: rect.height - 14 }; }
+function bounds() {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width < 700) {
+    const panelHeight = Math.min(280, Math.max(230, rect.height * 0.52));
+    const gap = 12;
+    const plotBottom = rect.height - panelHeight - gap;
+    return {
+      left: 4,
+      top: 4,
+      right: rect.width - 6,
+      bottom: plotBottom - 4,
+      width: rect.width - 10,
+      height: plotBottom - 8,
+      panel: { left: 4, top: plotBottom + gap, right: rect.width - 6, bottom: rect.height - 10, width: rect.width - 10, height: panelHeight - 10 }
+    };
+  }
+  const panelWidth = Math.min(330, Math.max(250, rect.width * 0.34));
+  const gap = 14;
+  const plotRight = Math.max(320, rect.width - panelWidth - gap);
+  return {
+    left: 4,
+    top: 4,
+    right: plotRight - 6,
+    bottom: rect.height - 10,
+    width: plotRight - 10,
+    height: rect.height - 14,
+    panel: { left: plotRight + gap, top: 4, right: rect.width - 6, bottom: rect.height - 10, width: rect.width - plotRight - gap - 6, height: rect.height - 14 }
+  };
+}
 function px(x, b) { return b.left + ((x + 1) / 2) * b.width; }
 function py(y, b) { return b.bottom - ((y + 1) / 2) * b.height; }
 function pointAt(x, y, b) { return { x: ((x - b.left) / b.width) * 2 - 1, y: ((b.bottom - y) / b.height) * 2 - 1 }; }
@@ -246,9 +336,10 @@ function draw() {
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   drawField(b);
   drawGrid(b);
-  if (view === "trees" && state.trees.length) drawTreeLines(state.trees[state.trees.length - 1], b);
+  if (view === "trees" && state.trees.length) drawForestCuts(b);
   drawPoints(b);
   drawAxes(b);
+  drawForestPanel(b.panel);
 }
 
 function drawField(b) {
@@ -270,29 +361,207 @@ function drawGrid(b) {
   for (let i = 0; i <= 4; i += 1) { const y = Math.round(b.top + (b.height / 4) * i) + 0.5; ctx.beginPath(); ctx.moveTo(b.left, y); ctx.lineTo(b.right, y); ctx.stroke(); }
 }
 
-function drawTreeLines(tree, b, region = { xMin: -1, xMax: 1, yMin: -1, yMax: 1 }) {
+function drawTreeLines(tree, b, region = { xMin: -1, xMax: 1, yMin: -1, yMax: 1 }, color = "#ffd447", lineWidth = 4) {
   if (tree.leaf) return;
-  ctx.strokeStyle = "#ffd447"; ctx.lineWidth = 4; ctx.setLineDash([10, 6]); ctx.beginPath();
+  ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.setLineDash([10, 6]); ctx.beginPath();
   if (tree.axis === "x") {
     const x = px(tree.value, b);
     ctx.moveTo(x, py(region.yMin, b)); ctx.lineTo(x, py(region.yMax, b));
     ctx.stroke();
-    drawTreeLines(tree.left, b, { ...region, xMax: tree.value });
-    drawTreeLines(tree.right, b, { ...region, xMin: tree.value });
+    drawTreeLines(tree.left, b, { ...region, xMax: tree.value }, color, lineWidth);
+    drawTreeLines(tree.right, b, { ...region, xMin: tree.value }, color, lineWidth);
   } else {
     const y = py(tree.value, b);
     ctx.moveTo(px(region.xMin, b), y); ctx.lineTo(px(region.xMax, b), y);
     ctx.stroke();
-    drawTreeLines(tree.left, b, { ...region, yMax: tree.value });
-    drawTreeLines(tree.right, b, { ...region, yMin: tree.value });
+    drawTreeLines(tree.left, b, { ...region, yMax: tree.value }, color, lineWidth);
+    drawTreeLines(tree.right, b, { ...region, yMin: tree.value }, color, lineWidth);
   }
   ctx.setLineDash([]);
 }
 
+function drawForestCuts(b) {
+  const colors = ["rgba(255,212,71,0.9)", "rgba(34,240,164,0.55)", "rgba(59,215,255,0.55)", "rgba(255,95,87,0.48)", "rgba(255,243,214,0.45)"];
+  state.trees.slice(-5).forEach((tree, index, trees) => {
+    const newest = index === trees.length - 1;
+    drawTreeLines(tree, b, { xMin: -1, xMax: 1, yMin: -1, yMax: 1 }, colors[index % colors.length], newest ? 4 : 2);
+  });
+}
+
+function drawPanelFrame(panel, title, subtitle) {
+  ctx.fillStyle = "rgba(5,6,12,0.74)";
+  ctx.fillRect(panel.left, panel.top, panel.width, panel.height);
+  ctx.strokeStyle = "rgba(255,243,214,0.35)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(panel.left + 1.5, panel.top + 1.5, panel.width - 3, panel.height - 3);
+  ctx.fillStyle = "#fff3d6";
+  ctx.font = "bold 15px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText(title, panel.left + 12, panel.top + 22);
+  ctx.fillStyle = "rgba(255,243,214,0.68)";
+  ctx.font = "11px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText(subtitle, panel.left + 12, panel.top + 40);
+}
+
+function drawPixelTree(x, y, size, tree, bag, focus) {
+  const stats = tree.stats || treeStats(tree);
+  const vote = focus ? predictTree(tree, focus) : tree.id % 2;
+  const bagUnique = new Set(bag || []).size;
+  const canopy = vote ? "#22f0a4" : "#3bd7ff";
+  const trunk = "#8d6a3f";
+  const shade = stats.xSplits >= stats.ySplits ? "rgba(255,212,71,0.75)" : "rgba(255,95,87,0.72)";
+  ctx.fillStyle = trunk;
+  ctx.fillRect(x + size * 0.42, y + size * 0.55, size * 0.18, size * 0.36);
+  ctx.fillStyle = canopy;
+  ctx.fillRect(x + size * 0.22, y + size * 0.24, size * 0.56, size * 0.42);
+  ctx.fillRect(x + size * 0.32, y + size * 0.08, size * 0.36, size * 0.22);
+  ctx.fillStyle = shade;
+  ctx.fillRect(x + size * 0.18, y + size * 0.68, Math.max(4, size * (bagUnique / state.points.length)), 4);
+  ctx.fillStyle = "#05060c";
+  ctx.font = "bold 10px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText(String(tree.id), x + 3, y + size - 2);
+}
+
+function drawForestPanel(panel) {
+  drawPanelFrame(panel, "FOREST", state.trees.length ? `${state.trees.length} trees / bootstrap + vote` : "plant trees to wake the forest");
+  if (!state.trees.length) {
+    ctx.fillStyle = "rgba(255,243,214,0.72)";
+    ctx.font = "13px Courier New, Microsoft YaHei, monospace";
+    ctx.fillText("No trees yet.", panel.left + 16, panel.top + 78);
+    ctx.fillText("Use Seed Tree to train.", panel.left + 16, panel.top + 100);
+    drawEmptyGrove(panel);
+    return;
+  }
+  drawTreeGrove(panel);
+  drawVoteBoard(panel);
+  drawStabilityChart(panel);
+}
+
+function drawEmptyGrove(panel) {
+  const cols = 4;
+  const size = Math.min(34, Math.floor((panel.width - 52) / cols));
+  const startX = panel.left + 18;
+  const startY = panel.top + 136;
+  ctx.save();
+  ctx.globalAlpha = 0.38;
+  for (let index = 0; index < 8; index += 1) {
+    const x = startX + (index % cols) * (size + 14);
+    const y = startY + Math.floor(index / cols) * (size + 18);
+    ctx.fillStyle = "#8d6a3f";
+    ctx.fillRect(x + size * 0.42, y + size * 0.58, size * 0.18, size * 0.32);
+    ctx.fillStyle = index % 2 ? "#3bd7ff" : "#22f0a4";
+    ctx.fillRect(x + size * 0.24, y + size * 0.28, size * 0.52, size * 0.34);
+    ctx.fillRect(x + size * 0.34, y + size * 0.12, size * 0.32, size * 0.2);
+    ctx.strokeStyle = "rgba(255,243,214,0.7)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x - 2, y - 2, size + 4, size + 4);
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(255,243,214,0.58)";
+  ctx.font = "11px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText("ghost slots: new trees fill tiles", panel.left + 16, startY + size * 2 + 42);
+  ctx.restore();
+}
+
+function drawTreeGrove(panel) {
+  const focus = focusPoint();
+  const cols = Math.max(4, Math.floor((panel.width - 22) / 42));
+  const size = Math.min(34, Math.floor((panel.width - 28) / cols) - 4);
+  const rows = panel.height < 300 ? 1 : 3;
+  const startX = panel.left + 12;
+  const startY = panel.top + 56;
+  const visible = state.trees.slice(-Math.min(state.trees.length, cols * rows));
+  visible.forEach((tree, index) => {
+    const x = startX + (index % cols) * (size + 7);
+    const y = startY + Math.floor(index / cols) * (size + 12);
+    drawPixelTree(x, y, size, tree, state.bags[state.trees.indexOf(tree)], focus);
+    if (tree === state.trees[state.trees.length - 1]) {
+      ctx.strokeStyle = "#ffd447";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x - 2, y - 2, size + 4, size + 5);
+    }
+  });
+  const latest = state.trees[state.trees.length - 1];
+  const bag = state.bags[state.bags.length - 1] || [];
+  ctx.fillStyle = "rgba(255,243,214,0.72)";
+  ctx.font = "11px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText(`latest bag: ${new Set(bag).size}/${state.points.length} unique`, panel.left + 12, startY + rows * (size + 12) + 12);
+  ctx.fillText(`split flavor: ${latest.stats.xSplits}x / ${latest.stats.ySplits}y`, panel.left + 12, startY + rows * (size + 12) + 28);
+}
+
+function drawVoteBoard(panel) {
+  const focus = focusPoint();
+  const details = voteDetails(focus);
+  const top = panel.top + (panel.height < 300 ? 145 : Math.min(232, panel.height * 0.48));
+  ctx.fillStyle = "#fff3d6";
+  ctx.font = "bold 12px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText(`vote probe #${focus.index + 1}`, panel.left + 12, top);
+  const maxDots = Math.min(details.votes.length, Math.floor((panel.width - 26) / 12));
+  details.votes.slice(-maxDots).forEach((vote, index) => {
+    ctx.fillStyle = vote ? "#22f0a4" : "#3bd7ff";
+    ctx.fillRect(panel.left + 12 + index * 12, top + 12, 9, 13);
+  });
+  const barX = panel.left + 12, barY = top + 34, barW = panel.width - 26, barH = 16;
+  ctx.fillStyle = "#3bd7ff";
+  ctx.fillRect(barX, barY, barW, barH);
+  ctx.fillStyle = "#22f0a4";
+  ctx.fillRect(barX, barY, barW * (details.positive / Math.max(1, details.votes.length)), barH);
+  ctx.strokeStyle = "rgba(255,243,214,0.54)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(barX, barY, barW, barH);
+  ctx.fillStyle = "rgba(255,243,214,0.72)";
+  ctx.font = "11px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText(`yes ${details.positive} / no ${details.negative} / margin ${Math.round(details.margin * 100)}%`, barX, barY + 31);
+}
+
+function drawStabilityChart(panel) {
+  const trend = stabilityTrend();
+  if (!trend.length) return;
+  const compact = panel.height < 300;
+  const chart = { x: panel.left + 12, y: panel.bottom - (compact ? 72 : 104), w: panel.width - 26, h: compact ? 42 : 70 };
+  ctx.fillStyle = "#fff3d6";
+  ctx.font = "bold 12px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText("stability as trees grow", chart.x, chart.y - 10);
+  ctx.strokeStyle = "rgba(255,243,214,0.25)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(chart.x, chart.y, chart.w, chart.h);
+  ctx.strokeStyle = "#ffd447";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  trend.forEach((point, index) => {
+    const x = chart.x + (trend.length === 1 ? 0 : (index / (trend.length - 1)) * chart.w);
+    const y = chart.y + chart.h - point.margin * chart.h;
+    if (index) ctx.lineTo(x, y);
+    else ctx.moveTo(x, y);
+  });
+  ctx.stroke();
+  trend.forEach((point, index) => {
+    if (!point.flips) return;
+    const x = chart.x + (trend.length === 1 ? 0 : (index / (trend.length - 1)) * chart.w);
+    ctx.fillStyle = "rgba(255,95,87,0.75)";
+    ctx.fillRect(x - 2, chart.y + chart.h - Math.min(chart.h, point.flips * 6), 4, Math.min(chart.h, point.flips * 6));
+  });
+  const last = trend[trend.length - 1];
+  ctx.fillStyle = "rgba(255,243,214,0.72)";
+  ctx.font = "11px Courier New, Microsoft YaHei, monospace";
+  ctx.fillText(`avg margin ${Math.round(last.margin * 100)}%; red ticks = vote flips`, chart.x, chart.y + chart.h + 18);
+}
+
 function drawPoints(b) {
+  const latestBag = state.bags[state.bags.length - 1] || [];
   state.points.forEach((point) => {
     const wrong = state.trees.length && forestVote(point) !== point.label;
     const x = px(point.x, b), y = py(point.y, b);
+    const bagCount = latestBag.filter((index) => index === point.index).length;
+    if (bagCount) {
+      ctx.strokeStyle = "rgba(255,212,71,0.86)";
+      ctx.lineWidth = Math.min(8, 2 + bagCount * 2);
+      ctx.strokeRect(x - 12, y - 12, 24, 24);
+      if (bagCount > 1) {
+        ctx.fillStyle = "#ffd447";
+        ctx.font = "bold 11px Courier New, Microsoft YaHei, monospace";
+        ctx.fillText(`x${bagCount}`, x + 10, y - 10);
+      }
+    }
     ctx.fillStyle = point.label ? "#22f0a4" : "#3bd7ff";
     ctx.strokeStyle = wrong && view === "errors" ? "#ff5f57" : "#05060c";
     ctx.lineWidth = wrong && view === "errors" ? 5 : 4;
