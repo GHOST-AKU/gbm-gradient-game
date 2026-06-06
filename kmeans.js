@@ -1,5 +1,7 @@
 const canvas = document.querySelector("#chart");
 const ctx = canvas.getContext("2d");
+const runtime = window.LabRuntime;
+const modelMath = window.KMeansModel;
 const scoreValue = document.querySelector("#mseValue");
 const roundValue = document.querySelector("#roundValue");
 const progressFill = document.querySelector("#progressFill");
@@ -80,7 +82,13 @@ const levels = [
 let currentLevel = 0;
 let state;
 let activeView = "territory";
-let autoTimer = null;
+const autoTrainer = runtime.createAutoTrainer({
+  button: autoBtn,
+  idleLabel: "自动迭代",
+  activeLabel: "暂停自动",
+  intervalMs: 850,
+  step,
+});
 let dragging = null;
 
 function clamp(value, min = -0.96, max = 0.96) {
@@ -88,9 +96,7 @@ function clamp(value, min = -0.96, max = 0.96) {
 }
 
 function distance2(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return dx * dx + dy * dy;
+  return modelMath.distance2(a, b);
 }
 
 function makePoints(level) {
@@ -106,40 +112,11 @@ function makeCentroids(level, k) {
 }
 
 function assign(points = state.points, centroids = state.centroids) {
-  return points.map((point) => {
-    let best = 0;
-    let bestDistance = Infinity;
-    centroids.forEach((centroid, index) => {
-      const value = distance2(point, centroid);
-      if (value < bestDistance) {
-        best = index;
-        bestDistance = value;
-      }
-    });
-    return best;
-  });
+  return modelMath.assign(points, centroids);
 }
 
 function metrics(assignments = state.assignments, centroids = state.centroids) {
-  const counts = Array(centroids.length).fill(0);
-  let inertia = 0;
-  state.points.forEach((point, index) => {
-    const cluster = assignments[index];
-    counts[cluster] += 1;
-    inertia += distance2(point, centroids[cluster]);
-  });
-  inertia /= state.points.length;
-  const empty = counts.filter((count) => count === 0).length;
-  const movement = centroids.reduce((sum, centroid) => {
-    const dx = centroid.x - centroid.lastX;
-    const dy = centroid.y - centroid.lastY;
-    return sum + Math.sqrt(dx * dx + dy * dy);
-  }, 0);
-  const compactness = Math.max(0, Math.min(1, 1 - inertia / state.baseline));
-  const stability = state.round ? Math.max(0, Math.min(1, 1 - movement / Math.max(0.02, centroids.length * 0.2))) : 0;
-  const clusterHealth = empty ? 0 : 1;
-  const score = Math.max(0, Math.min(0.99, compactness * 0.55 + stability * 0.39 + clusterHealth * 0.06 - empty * 0.08));
-  return { inertia, empty, movement, score, stability, counts };
+  return modelMath.metrics(state.points, assignments, centroids, state.baseline, state.round);
 }
 
 function resetGame() {
@@ -179,24 +156,10 @@ function step() {
   });
 
   const before = metrics();
-  const nextAssignments = assign();
   const rate = Number(moveRate.value);
-  const nextCentroids = state.centroids.map((centroid, index) => {
-    const members = state.points.filter((_, pointIndex) => nextAssignments[pointIndex] === index);
-    centroid.lastX = centroid.x;
-    centroid.lastY = centroid.y;
-    if (!members.length) return centroid;
-    const meanX = members.reduce((sum, point) => sum + point.x, 0) / members.length;
-    const meanY = members.reduce((sum, point) => sum + point.y, 0) / members.length;
-    return {
-      x: centroid.x + (meanX - centroid.x) * rate,
-      y: centroid.y + (meanY - centroid.y) * rate,
-      lastX: centroid.x,
-      lastY: centroid.y,
-    };
-  });
-  state.centroids = nextCentroids;
-  state.assignments = assign();
+  const next = modelMath.step(state.points, state.centroids, rate);
+  state.centroids = next.centroids;
+  state.assignments = next.assignments;
   state.round += 1;
   const after = metrics();
   state.bestScore = Math.max(state.bestScore, after.score);
@@ -233,11 +196,11 @@ function undo() {
 function updateHud() {
   const result = metrics();
   state.bestScore = Math.max(state.bestScore, result.score);
-  scoreValue.textContent = result.score.toFixed(2);
-  roundValue.textContent = state.round;
-  bestLabel.textContent = state.round ? `最佳 ${state.bestScore.toFixed(2)}` : "等待开始";
-  targetLabel.textContent = `目标 ${levels[currentLevel].target.toFixed(2)}`;
-  progressFill.style.width = `${Math.round(Math.min(1, result.score / levels[currentLevel].target) * 100)}%`;
+  runtime.setText(scoreValue, result.score.toFixed(2));
+  runtime.setText(roundValue, state.round);
+  runtime.setText(bestLabel, state.round ? `最佳 ${state.bestScore.toFixed(2)}` : "等待开始");
+  runtime.setText(targetLabel, `目标 ${levels[currentLevel].target.toFixed(2)}`);
+  runtime.setProgress(progressFill, result.score / levels[currentLevel].target);
   clusterLabel.textContent = clusterCount.value;
   rateLabel.textContent = Number(moveRate.value).toFixed(2);
   formulaLabel.textContent = state.round ? "分配 -> 移动" : "等待迭代";
@@ -249,27 +212,12 @@ function updateHud() {
   bestScoreLabel.textContent = state.bestScore.toFixed(2);
 }
 
-function stopAuto() {
-  if (autoTimer) clearInterval(autoTimer);
-  autoTimer = null;
-  autoBtn.textContent = "自动迭代";
-}
-
-function toggleAuto() {
-  if (autoTimer) {
-    stopAuto();
-    return;
-  }
-  autoBtn.textContent = "暂停自动";
-  step();
-  autoTimer = setInterval(step, 850);
-}
+function stopAuto() { autoTrainer.stop(); }
+function toggleAuto() { autoTrainer.toggle(); }
 
 function setView(view) {
   activeView = view;
-  viewPicker.querySelectorAll("button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === view);
-  });
+  runtime.setActiveSegment(viewPicker, view);
   const labels = {
     territory: "地盘视图：背景颜色表示每个位置会归属哪个质心。",
     distance: "距离视图：细线越短，样本离自己的质心越近。",
@@ -282,17 +230,9 @@ function setView(view) {
 }
 
 function updatePickers() {
-  levelPicker.innerHTML = "";
-  levels.forEach((level, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = level.shortName;
-    button.className = index === currentLevel ? "active" : "";
-    button.addEventListener("click", () => {
-      currentLevel = index;
-      resetGame();
-    });
-    levelPicker.append(button);
+  runtime.renderChoicePicker(levelPicker, levels, currentLevel, (index) => {
+    currentLevel = index;
+    resetGame();
   });
 }
 
@@ -301,15 +241,7 @@ function nextLevel() {
   resetGame();
 }
 
-function fitCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.max(320, Math.floor(rect.width * scale));
-  canvas.height = Math.max(260, Math.floor(rect.height * scale));
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  draw();
-}
+const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
 
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
@@ -541,10 +473,7 @@ autoBtn.addEventListener("click", toggleAuto);
 undoBtn.addEventListener("click", undo);
 resetBtn.addEventListener("click", resetGame);
 nextLevelBtn.addEventListener("click", nextLevel);
-viewPicker.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-view]");
-  if (button) setView(button.dataset.view);
-});
+runtime.bindSegmentedPicker(viewPicker, setView);
 window.addEventListener("resize", fitCanvas);
 
 resetGame();

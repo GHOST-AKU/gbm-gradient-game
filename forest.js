@@ -27,6 +27,8 @@ const treeLabel = $("#treeLabel");
 const oobLabel = $("#oobLabel");
 const depthStatLabel = $("#depthStatLabel");
 const bestScoreLabel = $("#bestScoreLabel");
+const runtime = window.LabRuntime;
+const modelMath = window.ForestModel;
 
 const levels = [
   { shortName: "阶梯", name: "入门：矩形阶梯", target: 0.9, description: "每棵树用矩形切分，森林投票后边界更稳定。", points: [[-0.82,-0.58,0],[-0.66,-0.36,0],[-0.5,-0.12,0],[-0.32,0.18,0],[-0.72,0.56,0],[-0.14,-0.62,0],[0.08,-0.42,0],[0.2,-0.12,1],[0.38,0.18,1],[0.56,0.46,1],[0.78,0.66,1],[0.66,-0.32,1],[-0.08,0.48,1],[0.18,0.72,1]] },
@@ -37,56 +39,32 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "vote";
-let autoTimer = null;
+const autoTrainer = runtime.createAutoTrainer({
+  button: autoBtn,
+  idleLabel: "自动造林",
+  activeLabel: "暂停造林",
+  intervalMs: 650,
+  step: trainTree,
+});
 
 function rng(seed) {
-  let value = seed;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
+  return modelMath.rng(seed);
 }
 
 function gini(points) {
-  if (!points.length) return 0;
-  const p = points.filter((point) => point.label === 1).length / points.length;
-  return 1 - p * p - (1 - p) * (1 - p);
+  return modelMath.gini(points);
 }
 
 function majority(points) {
-  const vote = points.reduce((sum, point) => sum + (point.label ? 1 : -1), 0);
-  return vote >= 0 ? 1 : 0;
+  return modelMath.majority(points);
 }
 
 function bestSplit(points, axes) {
-  let best = { gain: -Infinity };
-  axes.forEach((axis) => {
-    const values = [...new Set(points.map((point) => point[axis]))].sort((a, b) => a - b);
-    for (let i = 0; i < values.length - 1; i += 1) {
-      const value = (values[i] + values[i + 1]) / 2;
-      const left = points.filter((point) => point[axis] <= value);
-      const right = points.filter((point) => point[axis] > value);
-      if (!left.length || !right.length) continue;
-      const gain = gini(points) - (gini(left) * left.length + gini(right) * right.length) / points.length;
-      if (gain > best.gain) best = { axis, value, gain, left, right };
-    }
-  });
-  return best;
+  return modelMath.bestSplit(points, axes);
 }
 
 function buildTree(points, depth, maxTreeDepth, rand, featureCount) {
-  if (depth >= maxTreeDepth || points.length <= 2 || gini(points) < 0.02) return { leaf: true, label: majority(points), points: points.length };
-  const axes = featureCount === 1 ? [rand() < 0.5 ? "x" : "y"] : ["x", "y"];
-  const split = bestSplit(points, axes);
-  if (!Number.isFinite(split.gain) || split.gain <= 0.001) return { leaf: true, label: majority(points), points: points.length };
-  return {
-    leaf: false,
-    axis: split.axis,
-    value: split.value,
-    gain: split.gain,
-    left: buildTree(split.left, depth + 1, maxTreeDepth, rand, featureCount),
-    right: buildTree(split.right, depth + 1, maxTreeDepth, rand, featureCount),
-  };
+  return modelMath.buildTree(points, depth, maxTreeDepth, rand, featureCount);
 }
 
 function treeStats(tree, stats = { splits: 0, xSplits: 0, ySplits: 0, leaves: 0, depth: 0 }) {
@@ -109,8 +87,7 @@ function treeStats(tree, stats = { splits: 0, xSplits: 0, ySplits: 0, leaves: 0,
 }
 
 function predictTree(tree, point) {
-  if (tree.leaf) return tree.label;
-  return predictTree(point[tree.axis] <= tree.value ? tree.left : tree.right, point);
+  return modelMath.predictTree(tree, point);
 }
 
 function forestVote(point) {
@@ -227,19 +204,19 @@ function undo() {
 function updateHud() {
   const result = metrics();
   state.best = Math.max(state.best, result.score);
-  scoreValue.textContent = result.score.toFixed(2);
-  roundValue.textContent = state.trees.length;
-  targetLabel.textContent = `目标 ${levels[levelIndex].target.toFixed(2)}`;
-  progressFill.style.width = `${Math.round(Math.min(1, result.score / levels[levelIndex].target) * 100)}%`;
-  bestLabel.textContent = state.trees.length ? `最佳 ${state.best.toFixed(2)}` : "等待开始";
-  depthLabel.textContent = maxDepth.value;
-  featureLabel.textContent = featureRate.value;
-  accuracyLabel.textContent = `${Math.round(result.accuracy * 100)}%`;
-  marginLabel.textContent = `${Math.round(result.margin * 100)}%`;
-  treeLabel.textContent = state.trees.length;
-  oobLabel.textContent = `${Math.round(oobEstimate() * 100)}%`;
-  depthStatLabel.textContent = maxDepth.value;
-  bestScoreLabel.textContent = state.best.toFixed(2);
+  runtime.setText(scoreValue, result.score.toFixed(2));
+  runtime.setText(roundValue, state.trees.length);
+  runtime.setText(targetLabel, `目标 ${levels[levelIndex].target.toFixed(2)}`);
+  runtime.setProgress(progressFill, result.score / levels[levelIndex].target);
+  runtime.setText(bestLabel, state.trees.length ? `最佳 ${state.best.toFixed(2)}` : "等待开始");
+  runtime.setText(depthLabel, maxDepth.value);
+  runtime.setText(featureLabel, featureRate.value);
+  runtime.setText(accuracyLabel, `${Math.round(result.accuracy * 100)}%`);
+  runtime.setText(marginLabel, `${Math.round(result.margin * 100)}%`);
+  runtime.setText(treeLabel, state.trees.length);
+  runtime.setText(oobLabel, `${Math.round(oobEstimate() * 100)}%`);
+  runtime.setText(depthStatLabel, maxDepth.value);
+  runtime.setText(bestScoreLabel, state.best.toFixed(2));
 }
 
 function oobEstimate() {
@@ -260,24 +237,19 @@ function oobEstimate() {
   return tested ? correct / tested : metrics().accuracy;
 }
 
-function stopAuto() { if (autoTimer) clearInterval(autoTimer); autoTimer = null; autoBtn.textContent = "自动造林"; }
-function toggleAuto() { if (autoTimer) return stopAuto(); autoBtn.textContent = "暂停造林"; trainTree(); autoTimer = setInterval(trainTree, 650); }
+function stopAuto() { autoTrainer.stop(); }
+function toggleAuto() { autoTrainer.toggle(); }
 
 function renderPickers() {
-  levelPicker.innerHTML = "";
-  levels.forEach((level, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = level.shortName;
-    button.className = index === levelIndex ? "active" : "";
-    button.addEventListener("click", () => { levelIndex = index; resetGame(); });
-    levelPicker.append(button);
+  runtime.renderChoicePicker(levelPicker, levels, levelIndex, (index) => {
+    levelIndex = index;
+    resetGame();
   });
 }
 
 function setView(next) {
   view = next;
-  viewPicker.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  runtime.setActiveSegment(viewPicker, view);
   const text = {
     vote: "投票视图：左侧是多数投票边界，右侧逐棵树亮出票箱。",
     trees: "森林视图：每棵树都有自己的 bootstrap 样本和切分纹路。",
@@ -287,15 +259,7 @@ function setView(next) {
   toast.textContent = text; latestText.textContent = text; draw();
 }
 
-function fitCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(rect.width * scale);
-  canvas.height = Math.floor(rect.height * scale);
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  draw();
-}
+const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
 
 function bounds() {
   const rect = canvas.getBoundingClientRect();
@@ -583,7 +547,7 @@ autoBtn.addEventListener("click", toggleAuto);
 undoBtn.addEventListener("click", undo);
 resetBtn.addEventListener("click", resetGame);
 nextLevelBtn.addEventListener("click", () => { levelIndex = (levelIndex + 1) % levels.length; resetGame(); });
-viewPicker.addEventListener("click", (event) => { const button = event.target.closest("button[data-view]"); if (button) setView(button.dataset.view); });
+runtime.bindSegmentedPicker(viewPicker, setView);
 window.addEventListener("resize", fitCanvas);
 resetGame();
 requestAnimationFrame(fitCanvas);

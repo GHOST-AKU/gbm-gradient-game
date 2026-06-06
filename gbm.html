@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>梯度提升机训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=26" />
+    <link rel="stylesheet" href="./styles.css?v=28" />
   </head>
   <body class="gbm-page">
     <nav class="lab-switch" aria-label="切换训练场">
@@ -39,7 +39,7 @@
           </div>
         </div>
 
-        <div id="toast" class="toast" role="status">选择关卡和观察方式，然后训练第一棵弱树。</div>
+        <div id="toast" class="toast" role="status">先看蓝线的平均猜测，再训练第一棵弱树追残差。</div>
 
         <div class="canvas-wrap">
           <canvas id="chart" width="980" height="520"></canvas>
@@ -48,8 +48,10 @@
         <div class="legend" aria-label="图例">
           <span><i class="dot target"></i>真实目标</span>
           <span><i class="line prediction"></i>当前模型</span>
+          <span><i class="line previous"></i>上一轮模型</span>
           <span><i class="bar residual"></i>残差方向</span>
           <span><i class="line learner"></i>本轮弱学习器</span>
+          <span><i class="line learner-scaled"></i>学习率后的步长</span>
         </div>
       </section>
 
@@ -64,6 +66,11 @@
           <div class="progress-track" aria-hidden="true">
             <div id="progressFill"></div>
           </div>
+          <ol class="onboarding-list" aria-label="GBM 入门步骤">
+            <li><b>1</b><span>看蓝线：初始模型只猜这一关的平均值。</span></li>
+            <li><b>2</b><span>点一次训练：弱树会追红色残差。</span></li>
+            <li><b>3</b><span>切到弱树：看本轮贡献如何叠加成新模型。</span></li>
+          </ol>
         </section>
 
         <section class="panel-block view-card">
@@ -76,16 +83,34 @@
           </div>
         </section>
 
+        <section class="panel-block contrast-card">
+          <h2>集成方式</h2>
+          <p><strong>GBM 是串联补错。</strong>每一棵新弱树都追上一轮留下的残差，最后按顺序叠加成一个模型。</p>
+          <a href="./forest.html">对比随机森林的并联投票</a>
+        </section>
+
+        <section class="panel-block formula-card">
+          <h2>加法拆解</h2>
+          <p><code>F_m(x)=F_{m-1}(x)+ηh_m(x)</code></p>
+          <div class="formula-keys" aria-label="公式图例">
+            <span><i class="line previous"></i>旧模型</span>
+            <span><i class="line learner"></i>h_m</span>
+            <span><i class="line learner-scaled"></i>ηh_m</span>
+            <span><i class="line prediction"></i>新模型</span>
+          </div>
+          <small>平方误差下，残差就是这一轮要追的负梯度方向。</small>
+        </section>
+
         <section class="panel-block controls-card">
           <h2>训练控制</h2>
           <label class="slider-row" for="learningRate">
-            <span>学习率</span>
+            <span>学习率 η</span>
             <strong id="rateLabel">0.30</strong>
           </label>
           <input id="learningRate" type="range" min="0.05" max="0.8" value="0.3" step="0.05" />
 
           <label class="slider-row" for="treeDepth">
-            <span>树桩复杂度</span>
+            <span>弱树分段数</span>
             <strong id="depthLabel">3 段</strong>
           </label>
           <input id="treeDepth" type="range" min="1" max="8" value="3" step="1" />
@@ -130,6 +155,8 @@
       </div>
     </section>
 
-    <script src="./app.js?v=12"></script>
+    <script src="./models/gbm-model.js?v=1"></script>
+    <script src="./lab-runtime.js?v=1"></script>
+    <script src="./app.js?v=14"></script>
   </body>
 </html>

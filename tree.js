@@ -1,5 +1,7 @@
 const canvas = document.querySelector("#chart");
 const ctx = canvas.getContext("2d");
+const runtime = window.LabRuntime;
+const modelMath = window.TreeModel;
 const scoreValue = document.querySelector("#mseValue");
 const leafValue = document.querySelector("#roundValue");
 const progressFill = document.querySelector("#progressFill");
@@ -82,48 +84,27 @@ function rootLeaf() {
 }
 
 function pointsInLeaf(leaf) {
-  return state.points.filter((point) => (
-    point.x >= leaf.xMin && point.x <= leaf.xMax && point.y >= leaf.yMin && point.y <= leaf.yMax
-  ));
+  return modelMath.pointsInLeaf(state.points, leaf);
 }
 
 function gini(points) {
-  if (!points.length) return 0;
-  const positive = points.filter((point) => point.label === 1).length / points.length;
-  const negative = 1 - positive;
-  return 1 - positive * positive - negative * negative;
+  return modelMath.gini(points);
 }
 
 function majority(points) {
-  const score = points.reduce((sum, point) => sum + point.label, 0);
-  return score >= 0 ? 1 : -1;
+  return modelMath.majority(points);
 }
 
 function leafFor(point) {
-  return state.leaves.find((leaf) => (
-    point.x >= leaf.xMin && point.x <= leaf.xMax && point.y >= leaf.yMin && point.y <= leaf.yMax
-  )) || state.leaves[0];
+  return modelMath.leafFor(state.leaves, point);
 }
 
 function prediction(point) {
-  return majority(pointsInLeaf(leafFor(point)));
+  return modelMath.prediction(state.points, state.leaves, point);
 }
 
 function treeMetrics() {
-  let correct = 0;
-  let weightedImpurity = 0;
-  state.leaves.forEach((leaf) => {
-    const points = pointsInLeaf(leaf);
-    weightedImpurity += gini(points) * points.length;
-  });
-  state.points.forEach((point) => {
-    if (prediction(point) === point.label) correct += 1;
-  });
-  const accuracy = correct / state.points.length;
-  const impurity = weightedImpurity / state.points.length;
-  const depth = Math.max(...state.leaves.map((leaf) => leaf.depth));
-  const score = Math.max(0, Math.min(0.99, accuracy - Math.max(0, state.leaves.length - 4) * 0.015));
-  return { accuracy, impurity, depth, score };
+  return modelMath.metrics(state.points, state.leaves);
 }
 
 function activeLeaf() {
@@ -138,27 +119,11 @@ function activeLeaf() {
 }
 
 function splitGain(leaf, axis, value) {
-  const points = pointsInLeaf(leaf);
-  const left = points.filter((point) => point[axis] <= value);
-  const right = points.filter((point) => point[axis] > value);
-  if (!left.length || !right.length) return -Infinity;
-  const before = gini(points);
-  const after = (gini(left) * left.length + gini(right) * right.length) / points.length;
-  return before - after;
+  return modelMath.splitGain(state.points, leaf, axis, value);
 }
 
 function bestSplit(leaf = activeLeaf()) {
-  let best = { axis: splitAxis, value: Number(threshold.value), gain: -Infinity };
-  ["x", "y"].forEach((axis) => {
-    const values = pointsInLeaf(leaf).map((point) => point[axis]).sort((a, b) => a - b);
-    for (let i = 0; i < values.length - 1; i += 1) {
-      const value = (values[i] + values[i + 1]) / 2;
-      if (value <= leaf[`${axis}Min`] || value >= leaf[`${axis}Max`]) continue;
-      const gain = splitGain(leaf, axis, value);
-      if (gain > best.gain) best = { axis, value, gain };
-    }
-  });
-  return best;
+  return modelMath.bestSplit(state.points, leaf, splitAxis, Number(threshold.value));
 }
 
 function resetGame() {
@@ -248,11 +213,11 @@ function updateHud() {
   const result = treeMetrics();
   state.bestScore = Math.max(state.bestScore, result.score);
   const split = bestSplit(activeLeaf());
-  scoreValue.textContent = result.score.toFixed(2);
-  leafValue.textContent = state.leaves.length;
-  targetLabel.textContent = `目标 ${levels[currentLevel].target.toFixed(2)}`;
-  progressFill.style.width = `${Math.round(Math.min(1, result.score / levels[currentLevel].target) * 100)}%`;
-  bestLabel.textContent = state.leaves.length > 1 ? `最佳 ${state.bestScore.toFixed(2)}` : "等待开始";
+  runtime.setText(scoreValue, result.score.toFixed(2));
+  runtime.setText(leafValue, state.leaves.length);
+  runtime.setText(targetLabel, `目标 ${levels[currentLevel].target.toFixed(2)}`);
+  runtime.setProgress(progressFill, result.score / levels[currentLevel].target);
+  runtime.setText(bestLabel, state.leaves.length > 1 ? `最佳 ${state.bestScore.toFixed(2)}` : "等待开始");
   thresholdLabel.textContent = Number(threshold.value).toFixed(2);
   depthLabel.textContent = maxDepth.value;
   formulaLabel.textContent = state.leaves.length > 1 ? `${state.leaves.length} 个叶子` : "等待切分";
@@ -266,7 +231,7 @@ function updateHud() {
 
 function setView(view) {
   activeView = view;
-  viewPicker.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  runtime.setActiveSegment(viewPicker, view);
   const labels = {
     regions: "区域视图：每个矩形叶子用多数票决定预测颜色。",
     gain: "增益视图：候选切分线越能降低 Gini，不纯度下降越明显。",
@@ -283,17 +248,9 @@ function updateAxisButtons() {
 }
 
 function updatePickers() {
-  levelPicker.innerHTML = "";
-  levels.forEach((level, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = level.shortName;
-    button.className = index === currentLevel ? "active" : "";
-    button.addEventListener("click", () => {
-      currentLevel = index;
-      resetGame();
-    });
-    levelPicker.append(button);
+  runtime.renderChoicePicker(levelPicker, levels, currentLevel, (index) => {
+    currentLevel = index;
+    resetGame();
   });
 }
 
@@ -302,15 +259,7 @@ function nextLevel() {
   resetGame();
 }
 
-function fitCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.max(320, Math.floor(rect.width * scale));
-  canvas.height = Math.max(260, Math.floor(rect.height * scale));
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  draw();
-}
+const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
 
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
@@ -495,10 +444,7 @@ bestBtn.addEventListener("click", () => {
 undoBtn.addEventListener("click", undo);
 resetBtn.addEventListener("click", resetGame);
 nextLevelBtn.addEventListener("click", nextLevel);
-viewPicker.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-view]");
-  if (button) setView(button.dataset.view);
-});
+runtime.bindSegmentedPicker(viewPicker, setView);
 canvas.addEventListener("click", (event) => {
   const rect = canvas.getBoundingClientRect();
   const bounds = chartBounds();

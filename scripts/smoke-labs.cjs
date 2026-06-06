@@ -70,6 +70,22 @@ function run(file, options) {
   };
 
   vm.createContext(context);
+  const modelFiles = {
+    "app.js": "models/gbm-model.js",
+    "forest.js": "models/forest-model.js",
+    "kmeans.js": "models/kmeans-model.js",
+    "linear.js": "models/linear-model.js",
+    "logistic.js": "models/logistic-model.js",
+    "nn.js": "models/nn-model.js",
+    "svm.js": "models/svm-model.js",
+    "tree.js": "models/tree-model.js",
+  };
+  if (modelFiles[file]) {
+    vm.runInContext(fs.readFileSync(modelFiles[file], "utf8"), context, { filename: modelFiles[file] });
+  }
+  if (fs.existsSync("lab-runtime.js")) {
+    vm.runInContext(fs.readFileSync("lab-runtime.js", "utf8"), context, { filename: "lab-runtime.js" });
+  }
   vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
 
   const results = [];
@@ -111,6 +127,8 @@ const specs = [
   ["logistic.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 80, values: { "#learningRate": "0.5", "#regularization": "0.01" } }],
   ["nn.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 80, values: { "#learningRate": "0.35", "#epochsPerStep": "10" } }],
   ["forest.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 80, values: { "#maxDepth": "3", "#featureRate": "1" } }],
+  ["svm.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 1, maxSteps: 120, values: { "#learningRate": "1", "#treeDepth": "2" } }],
+  ["tree.js", { step: "#bestBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 20, values: { "#threshold": "0", "#maxDepth": "4" } }],
 ];
 
 for (const [file, options] of specs) {

@@ -29,6 +29,8 @@ const autoBtn = document.querySelector("#autoBtn");
 const undoBtn = document.querySelector("#undoBtn");
 const resetBtn = document.querySelector("#resetBtn");
 const nextLevelBtn = document.querySelector("#nextLevelBtn");
+const runtime = window.LabRuntime;
+const modelMath = window.GbmModel;
 
 const levels = [
   {
@@ -133,15 +135,21 @@ const levels = [
 let currentLevel = 0;
 let targetPoints = [];
 let state;
-let autoTimer = null;
 let activeView = "model";
+const autoTrainer = runtime.createAutoTrainer({
+  button: autoBtn,
+  idleLabel: "自动训练",
+  activeLabel: "暂停自动",
+  intervalMs: 900,
+  step: trainStep,
+});
 
 function makePoints(level) {
   return level.points.map(([x, y]) => ({ x, y }));
 }
 
 function initialPrediction() {
-  const avg = targetPoints.reduce((sum, point) => sum + point.y, 0) / targetPoints.length;
+  const avg = modelMath.mean(targetPoints.map((point) => point.y));
   return targetPoints.map(() => avg);
 }
 
@@ -155,7 +163,9 @@ function resetGame() {
     predictions: initialPrediction(),
     history: [],
     lastLearner: null,
+    lastLearnerMeta: null,
     lastBefore: null,
+    lastRate: null,
     round: 0,
     bestMse: Number.POSITIVE_INFINITY,
     mseHistory: [],
@@ -169,95 +179,38 @@ function resetGame() {
   logCard.classList.remove("has-logs");
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
-  toast.textContent = "选择观察方式，然后训练第一棵弱树。初始模型只猜这一关目标的平均值。";
+  toast.textContent = "先看蓝线的平均猜测，再训练第一棵弱树追残差。平方误差下，残差就是负梯度方向。";
   updatePickers();
   draw();
   updateHud();
 }
 
 function calcMse(predictions = state.predictions) {
-  return (
-    predictions.reduce((sum, pred, index) => {
-      const err = targetPoints[index].y - pred;
-      return sum + err * err;
-    }, 0) / targetPoints.length
-  );
+  return modelMath.mse(targetPoints.map((point) => point.y), predictions);
 }
 
 function buildWeakLearner(segments) {
-  const residuals = targetPoints.map((point, index) => point.y - state.predictions[index]);
-  const ordered = targetPoints
-    .map((point, index) => ({ point, index, residual: residuals[index] }))
-    .sort((a, b) => a.point.x - b.point.x);
-  const leafCount = Math.max(1, Math.min(segments, ordered.length));
-  const prefix = [0];
-  const prefixSquare = [0];
-
-  ordered.forEach((item, index) => {
-    prefix[index + 1] = prefix[index] + item.residual;
-    prefixSquare[index + 1] = prefixSquare[index] + item.residual * item.residual;
-  });
-
-  const groupCost = (start, end) => {
-    const count = end - start;
-    const sum = prefix[end] - prefix[start];
-    const square = prefixSquare[end] - prefixSquare[start];
-    return square - (sum * sum) / Math.max(1, count);
-  };
-
-  const dp = Array.from({ length: leafCount + 1 }, () => Array(ordered.length + 1).fill(Infinity));
-  const splitAt = Array.from({ length: leafCount + 1 }, () => Array(ordered.length + 1).fill(0));
-  dp[0][0] = 0;
-
-  for (let leaf = 1; leaf <= leafCount; leaf += 1) {
-    for (let end = leaf; end <= ordered.length; end += 1) {
-      for (let start = leaf - 1; start < end; start += 1) {
-        const cost = dp[leaf - 1][start] + groupCost(start, end);
-        if (cost < dp[leaf][end]) {
-          dp[leaf][end] = cost;
-          splitAt[leaf][end] = start;
-        }
-      }
-    }
-  }
-
-  const learner = Array(targetPoints.length).fill(0);
-  let end = ordered.length;
-  for (let leaf = leafCount; leaf >= 1; leaf -= 1) {
-    const start = splitAt[leaf][end];
-    const avgResidual = (prefix[end] - prefix[start]) / Math.max(1, end - start);
-    for (let i = start; i < end; i += 1) learner[ordered[i].index] = avgResidual;
-    end = start;
-  }
-
-  return learner;
+  return modelMath.buildWeakLearner(targetPoints, state.predictions, segments);
 }
 
 function calcOverfitRisk(rate, segments, nextRound) {
-  const rateRisk = Math.max(0, (rate - 0.42) / 0.38);
-  const depthRisk = Math.max(0, (segments - 5) / 3);
-  const roundRisk = Math.max(0, (nextRound - 4) / 8);
-  return Math.min(1, rateRisk * 0.45 + depthRisk * 0.35 + roundRisk * 0.2);
+  return modelMath.overfitRisk(rate, segments, nextRound);
 }
 
 function buildOverfitNoise(risk, nextRound) {
-  const amplitude = risk * (0.025 + Math.min(nextRound, 14) * 0.003);
-  return targetPoints.map((point, index) => {
-    const wave = Math.sin((index + 1) * 3.9 + nextRound * 1.7);
-    const zigzag = index % 2 === 0 ? 1 : -1;
-    return (wave * 0.55 + zigzag * 0.45) * amplitude;
-  });
+  return modelMath.overfitNoise(targetPoints, risk, nextRound);
 }
 
 function clampPrediction(value) {
-  return Math.max(0.02, Math.min(0.98, value));
+  return modelMath.clampPrediction(value);
 }
 
 function trainStep() {
   const rate = Number(learningRate.value);
   const segments = Number(treeDepth.value);
   const before = calcMse();
-  const learner = buildWeakLearner(segments);
+  const learnerModel = buildWeakLearner(segments);
+  const learner = learnerModel.values;
   const nextRound = state.round + 1;
   const overfitRisk = calcOverfitRisk(rate, segments, nextRound);
   const shouldOverfit = rate >= 0.52 && segments >= 6 && nextRound >= 3;
@@ -270,7 +223,9 @@ function trainStep() {
   state.history.push({
     predictions: [...state.predictions],
     lastLearner: state.lastLearner ? [...state.lastLearner] : null,
+    lastLearnerMeta: state.lastLearnerMeta ? { leaves: state.lastLearnerMeta.leaves.map((leaf) => ({ ...leaf })) } : null,
     lastBefore: state.lastBefore ? [...state.lastBefore] : null,
+    lastRate: state.lastRate,
     round: state.round,
     bestMse: state.bestMse,
     mseHistory: [...state.mseHistory],
@@ -282,6 +237,8 @@ function trainStep() {
   state.lastBefore = [...state.predictions];
   state.predictions = nextPredictions;
   state.lastLearner = learner;
+  state.lastLearnerMeta = learnerModel;
+  state.lastRate = rate;
   state.round = nextRound;
   state.bestMse = Math.min(state.bestMse, after);
   state.mseHistory.push(after);
@@ -292,10 +249,10 @@ function trainStep() {
   state.overfit = shouldOverfit ? Math.min(1, state.overfit + 0.2 + overfitRisk * 0.25) : Math.max(0, state.overfit - 0.08);
 
   const improvement = Math.max(0, before - after);
-  toast.textContent = `第 ${state.round} 轮：小树拟合残差，模型按学习率 ${rate.toFixed(
+  toast.textContent = `第 ${state.round} 轮：弱树按 ${segments} 段拟合残差，模型按学习率 ${rate.toFixed(
     2,
-  )} 前进，误差下降 ${improvement.toFixed(4)}。`;
-  prependLog(`第 ${state.round} 棵树 | ${segments} 段 | MSE ${before.toFixed(4)} 至 ${after.toFixed(4)}`);
+  )} 只走 ηh_m 这一步，误差下降 ${improvement.toFixed(4)}。`;
+  prependLog(`第 ${state.round} 棵树 | ${segments} 段叶子 | MSE ${before.toFixed(4)} 至 ${after.toFixed(4)}`);
   if (shouldOverfit) {
     toast.textContent = `OVERFIT MODE：你把噪声也学进去了。学习率 ${rate.toFixed(2)} + ${segments} 段弱树让曲线开始乱抖。`;
     if (roundLog.firstElementChild) {
@@ -308,7 +265,7 @@ function trainStep() {
   if (after <= levels[currentLevel].target && !shouldOverfit) {
     toast.textContent = `通关！这一关目标 MSE ${levels[currentLevel].target.toFixed(3)}，你用 ${state.completedRound} 棵弱树达成了。`;
     stopAuto();
-  } else if (autoTimer && state.round > 5 && improvement < 0.00001) {
+  } else if (autoTrainer.isRunning() && state.round > 5 && improvement < 0.00001) {
     toast.textContent = "模型进入平台期：换观察方式看看卡在残差、弱树贡献，还是误差下降曲线。";
     stopAuto();
   }
@@ -322,7 +279,9 @@ function undoStep() {
   }
   state.predictions = previous.predictions;
   state.lastLearner = previous.lastLearner;
+  state.lastLearnerMeta = previous.lastLearnerMeta;
   state.lastBefore = previous.lastBefore;
+  state.lastRate = previous.lastRate;
   state.round = previous.round;
   state.bestMse = previous.bestMse;
   state.mseHistory = previous.mseHistory;
@@ -388,35 +347,25 @@ function updateHud() {
   const level = levels[currentLevel];
   const mse = calcMse();
   state.bestMse = Math.min(state.bestMse, mse);
-  mseValue.textContent = mse.toFixed(4);
-  roundValue.textContent = state.round;
-  bestLabel.textContent = state.round ? `最佳 ${state.bestMse.toFixed(4)}` : "等待开始";
-  targetLabel.textContent = `目标 ${level.target.toFixed(3)}`;
+  runtime.setText(mseValue, mse.toFixed(4));
+  runtime.setText(roundValue, state.round);
+  runtime.setText(bestLabel, state.round ? `最佳 ${state.bestMse.toFixed(4)}` : "等待开始");
+  runtime.setText(targetLabel, `目标 ${level.target.toFixed(3)}`);
   const initial = state.history[0] ? calcMse(state.history[0].predictions) : calcMse(initialPrediction());
   const score = Math.max(0, Math.min(1, (initial - mse) / Math.max(initial - level.target, 0.0001)));
-  progressFill.style.width = `${Math.round(score * 100)}%`;
-  rateLabel.textContent = Number(learningRate.value).toFixed(2);
-  depthLabel.textContent = `${treeDepth.value} 段`;
+  runtime.setProgress(progressFill, score);
+  runtime.setText(rateLabel, Number(learningRate.value).toFixed(2));
+  runtime.setText(depthLabel, `${treeDepth.value} 段`);
   document.body.classList.toggle("overfit-mode", state.overfit > 0.15);
   if (!logOverlay.hidden) updateLogModalStats();
 }
 
 function stopAuto() {
-  if (autoTimer) {
-    clearInterval(autoTimer);
-    autoTimer = null;
-  }
-  autoBtn.textContent = "自动训练";
+  autoTrainer.stop();
 }
 
 function toggleAuto() {
-  if (autoTimer) {
-    stopAuto();
-    return;
-  }
-  autoBtn.textContent = "暂停自动";
-  trainStep();
-  autoTimer = setInterval(trainStep, 900);
+  autoTrainer.toggle();
 }
 
 function nextLevel() {
@@ -426,13 +375,11 @@ function nextLevel() {
 
 function setView(view) {
   activeView = view;
-  viewPicker.querySelectorAll("button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === view);
-  });
+  runtime.setActiveSegment(viewPicker, view);
   const labels = {
-    model: "模型视图：看蓝色预测曲线如何追近黄色目标点。",
-    residual: "残差视图：看每个样本还剩多少没有解释，红色为欠预测，绿色为过预测。",
-    learner: "弱树视图：看上一棵弱学习器给每个区域的修正量。",
+    model: "模型视图：灰线是旧模型，绿色是全量弱树，黄色是学习率缩放后的实际步长，蓝线是新模型。",
+    residual: "残差视图：看每个样本还剩多少没有解释；平方误差下，残差就是这轮要追的负梯度。",
+    learner: "弱树视图：虚线是叶子边界，标签是每段残差均值；黄色柱是 ηh_m 的实际修正。",
     loss: "误差视图：看每轮 MSE 是否还在有效下降。",
   };
   toast.textContent = labels[view];
@@ -440,29 +387,13 @@ function setView(view) {
 }
 
 function updatePickers() {
-  levelPicker.innerHTML = "";
-  levels.forEach((level, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = index === currentLevel ? "active" : "";
-    button.textContent = level.shortName;
-    button.addEventListener("click", () => {
-      currentLevel = index;
-      resetGame();
-    });
-    levelPicker.append(button);
+  runtime.renderChoicePicker(levelPicker, levels, currentLevel, (index) => {
+    currentLevel = index;
+    resetGame();
   });
 }
 
-function fitCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.max(320, Math.floor(rect.width * scale));
-  canvas.height = Math.max(260, Math.floor(rect.height * scale));
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  draw();
-}
+const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
 
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
@@ -553,7 +484,12 @@ function drawAxes(bounds, view) {
 
 function drawModelPanel(bounds) {
   drawResiduals(bounds);
-  if (state.lastLearner) drawLearner(bounds);
+  if (state.lastLearnerMeta) drawLeafGuides(bounds, state.lastLearnerMeta, true);
+  if (state.lastBefore) drawPrediction(bounds, state.lastBefore, "rgba(168,176,189,0.55)", 2, false);
+  if (state.lastLearner) {
+    drawLearner(bounds, false);
+    drawLearner(bounds, true);
+  }
   if (state.overfit > 0) drawOverfitGlitch(bounds);
   drawPrediction(bounds, state.predictions, "#55c7f7", 4.5, true);
   drawTargets(bounds);
@@ -615,6 +551,7 @@ function drawLearnerPanel(bounds) {
   const zero = bounds.top + bounds.height / 2;
   const maxValue = Math.max(0.12, ...state.lastLearner.map((value) => Math.abs(value)));
   ctx.save();
+  if (state.lastLearnerMeta) drawLeafGuides(bounds, state.lastLearnerMeta, false);
   ctx.strokeStyle = "rgba(255,243,214,0.42)";
   ctx.lineWidth = 3;
   ctx.beginPath();
@@ -625,15 +562,28 @@ function drawLearnerPanel(bounds) {
     const x = px(targetPoints[index], bounds);
     const y = zero - (value / maxValue) * (bounds.height * 0.38);
     ctx.strokeStyle = value >= 0 ? "#35d7a3" : "#ff7868";
-    ctx.lineWidth = 9;
+    ctx.globalAlpha = 0.38;
+    ctx.lineWidth = 11;
     ctx.beginPath();
     ctx.moveTo(x, zero);
     ctx.lineTo(x, y);
     ctx.stroke();
+
+    const scaled = value * (state.lastRate ?? Number(learningRate.value));
+    const scaledY = zero - (scaled / maxValue) * (bounds.height * 0.38);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#ffd447";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(x, zero);
+    ctx.lineTo(x, scaledY);
+    ctx.stroke();
   });
   if (state.lastBefore) drawPrediction(bounds, state.lastBefore, "rgba(168,176,189,0.55)", 2, false);
+  drawLearner(bounds, false);
+  drawLearner(bounds, true);
   drawPrediction(bounds, state.predictions, "#55c7f7", 4.5, true);
-  drawPanelTitle(bounds, "绿色向上修正，红色向下修正；蓝线是叠加后的模型");
+  drawPanelTitle(bounds, "虚线分出叶子；淡绿/红是 h_m，黄色是 ηh_m");
   ctx.restore();
 }
 
@@ -737,11 +687,52 @@ function drawPrediction(bounds, values, color, width, glow) {
   ctx.restore();
 }
 
-function drawLearner(bounds) {
-  const rate = Number(learningRate.value);
-  const learnerProjection = state.predictions.map((prediction, index) => prediction - rate * state.lastLearner[index]);
-  const shifted = learnerProjection.map((prediction, index) => prediction + state.lastLearner[index]);
-  drawPrediction(bounds, shifted, "rgba(34,240,164,0.9)", 3, false);
+function drawLeafGuides(bounds, meta, subtle) {
+  if (!meta?.leaves?.length) return;
+  ctx.save();
+  meta.leaves.forEach((leaf, index) => {
+    const x = bounds.left + leaf.xMin * bounds.width;
+    const width = Math.max(3, (leaf.xMax - leaf.xMin) * bounds.width);
+    ctx.fillStyle = index % 2 === 0 ? "rgba(34,240,164,0.045)" : "rgba(59,215,255,0.04)";
+    ctx.fillRect(x, bounds.top, width, bounds.height);
+
+    if (index > 0) {
+      ctx.strokeStyle = subtle ? "rgba(255,212,71,0.22)" : "rgba(255,212,71,0.55)";
+      ctx.lineWidth = subtle ? 2 : 3;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath();
+      ctx.moveTo(x, bounds.top);
+      ctx.lineTo(x, bounds.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  });
+
+  if (!subtle) {
+    ctx.font = "12px Courier New, Microsoft YaHei, monospace";
+    ctx.textAlign = "center";
+    meta.leaves.forEach((leaf) => {
+      const center = bounds.left + ((leaf.xMin + leaf.xMax) / 2) * bounds.width;
+      const labelY = leaf.value >= 0 ? bounds.top + 62 : bounds.bottom - 28;
+      ctx.fillStyle = "#08111d";
+      ctx.fillRect(center - 36, labelY - 14, 72, 20);
+      ctx.strokeStyle = leaf.value >= 0 ? "#35d7a3" : "#ff7868";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(center - 36, labelY - 14, 72, 20);
+      ctx.fillStyle = "#fff3d6";
+      ctx.fillText(`均值 ${leaf.value.toFixed(2)}`, center, labelY + 1);
+    });
+    ctx.textAlign = "left";
+  }
+  ctx.restore();
+}
+
+function drawLearner(bounds, scaled) {
+  const rate = state.lastRate ?? Number(learningRate.value);
+  const base = state.lastBefore || state.predictions.map((prediction, index) => prediction - rate * state.lastLearner[index]);
+  const factor = scaled ? rate : 1;
+  const shifted = base.map((prediction, index) => prediction + factor * state.lastLearner[index]);
+  drawPrediction(bounds, shifted, scaled ? "rgba(255,212,71,0.92)" : "rgba(34,240,164,0.58)", scaled ? 3 : 2, false);
 }
 
 learningRate.addEventListener("input", updateHud);
@@ -759,10 +750,7 @@ logOverlay.addEventListener("click", (event) => {
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !logOverlay.hidden) closeLogModal();
 });
-viewPicker.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-view]");
-  if (button) setView(button.dataset.view);
-});
+runtime.bindSegmentedPicker(viewPicker, setView);
 window.addEventListener("resize", fitCanvas);
 
 resetGame();

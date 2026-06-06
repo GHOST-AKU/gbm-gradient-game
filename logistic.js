@@ -1,6 +1,8 @@
 const $ = (selector) => document.querySelector(selector);
 const canvas = $("#chart");
 const ctx = canvas.getContext("2d");
+const runtime = window.LabRuntime;
+const modelMath = window.LogisticModel;
 const scoreValue = $("#scoreValue");
 const roundValue = $("#roundValue");
 const progressFill = $("#progressFill");
@@ -37,28 +39,20 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "prob";
-let autoTimer = null;
+const autoTrainer = runtime.createAutoTrainer({
+  button: autoBtn,
+  idleLabel: "自动训练",
+  activeLabel: "暂停自动",
+  intervalMs: 520,
+  step: trainStep,
+});
 
-function sigmoid(z) { return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z)))); }
-function logit(point, model = state) { return model.w1 * point.x + model.w2 * point.y + model.b; }
-function prob(point, model = state) { return sigmoid(logit(point, model)); }
+function sigmoid(z) { return modelMath.sigmoid(z); }
+function logit(point, model = state) { return modelMath.logit(point, model); }
+function prob(point, model = state) { return modelMath.probability(point, model); }
 
 function metrics(model = state) {
-  let loss = 0;
-  let correct = 0;
-  let confidence = 0;
-  state.points.forEach((point) => {
-    const p = Math.min(0.999, Math.max(0.001, prob(point, model)));
-    loss += -(point.label * Math.log(p) + (1 - point.label) * Math.log(1 - p));
-    const prediction = p >= 0.5 ? 1 : 0;
-    if (prediction === point.label) correct += 1;
-    confidence += Math.abs(p - 0.5) * 2;
-  });
-  loss /= state.points.length;
-  const accuracy = correct / state.points.length;
-  confidence /= state.points.length;
-  const score = Math.max(0, Math.min(0.99, accuracy * 0.76 + confidence * 0.24 - Math.max(0, loss - 0.22) * 0.08));
-  return { loss, accuracy, confidence, score };
+  return modelMath.metrics(state.points, model);
 }
 
 function resetGame() {
@@ -78,23 +72,7 @@ function trainStep() {
   state.history.push({ w1: state.w1, w2: state.w2, b: state.b, round: state.round, best: state.best, lossHistory: [...state.lossHistory] });
   const lr = Number(learningRate.value);
   const reg = Number(regularization.value);
-  for (let epoch = 0; epoch < 12; epoch += 1) {
-    let dw1 = reg * state.w1;
-    let dw2 = reg * state.w2;
-    let db = 0;
-    state.points.forEach((point) => {
-      const error = prob(point) - point.label;
-      dw1 += error * point.x;
-      dw2 += error * point.y;
-      db += error;
-    });
-    dw1 /= state.points.length;
-    dw2 /= state.points.length;
-    db /= state.points.length;
-    state.w1 -= lr * dw1;
-    state.w2 -= lr * dw2;
-    state.b -= lr * db;
-  }
+  Object.assign(state, modelMath.train(state.points, state, lr, reg, 12));
   state.round += 1;
   const result = metrics();
   state.best = Math.max(state.best, result.score);
@@ -124,11 +102,11 @@ function undo() {
 function updateHud() {
   const result = metrics();
   state.best = Math.max(state.best, result.score);
-  scoreValue.textContent = result.score.toFixed(2);
-  roundValue.textContent = state.round;
-  targetLabel.textContent = `目标 ${levels[levelIndex].target.toFixed(2)}`;
-  progressFill.style.width = `${Math.round(Math.min(1, result.score / levels[levelIndex].target) * 100)}%`;
-  bestLabel.textContent = state.round ? `最佳 ${state.best.toFixed(2)}` : "等待开始";
+  runtime.setText(scoreValue, result.score.toFixed(2));
+  runtime.setText(roundValue, state.round);
+  runtime.setText(targetLabel, `目标 ${levels[levelIndex].target.toFixed(2)}`);
+  runtime.setProgress(progressFill, result.score / levels[levelIndex].target);
+  runtime.setText(bestLabel, state.round ? `最佳 ${state.best.toFixed(2)}` : "等待开始");
   rateLabel.textContent = Number(learningRate.value).toFixed(2);
   regLabel.textContent = Number(regularization.value).toFixed(2);
   accuracyLabel.textContent = `${Math.round(result.accuracy * 100)}%`;
@@ -139,37 +117,24 @@ function updateHud() {
   bestScoreLabel.textContent = state.best.toFixed(2);
 }
 
-function stopAuto() { if (autoTimer) clearInterval(autoTimer); autoTimer = null; autoBtn.textContent = "自动训练"; }
-function toggleAuto() { if (autoTimer) return stopAuto(); autoBtn.textContent = "暂停自动"; trainStep(); autoTimer = setInterval(trainStep, 520); }
+function stopAuto() { autoTrainer.stop(); }
+function toggleAuto() { autoTrainer.toggle(); }
 
 function renderPickers() {
-  levelPicker.innerHTML = "";
-  levels.forEach((level, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = level.shortName;
-    button.className = index === levelIndex ? "active" : "";
-    button.addEventListener("click", () => { levelIndex = index; resetGame(); });
-    levelPicker.append(button);
+  runtime.renderChoicePicker(levelPicker, levels, levelIndex, (index) => {
+    levelIndex = index;
+    resetGame();
   });
 }
 
 function setView(next) {
   view = next;
-  viewPicker.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  runtime.setActiveSegment(viewPicker, view);
   const text = { prob: "概率视图：背景越绿，模型越相信这里是正类。", boundary: "边界视图：亮线是 p=0.5 的分类边界。", loss: "损失视图：交叉熵下降代表概率更可信。", weights: "权重视图：两个权重决定边界方向，偏置决定平移。" }[view];
   toast.textContent = text; latestText.textContent = text; draw();
 }
 
-function fitCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(rect.width * scale);
-  canvas.height = Math.floor(rect.height * scale);
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  draw();
-}
+const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw, { minWidth: 1, minHeight: 1 });
 
 function bounds() { const rect = canvas.getBoundingClientRect(); return { left: 4, top: 4, right: rect.width - 6, bottom: rect.height - 10, width: rect.width - 10, height: rect.height - 14 }; }
 function px(x, b) { return b.left + ((x + 1) / 2) * b.width; }
@@ -260,7 +225,7 @@ autoBtn.addEventListener("click", toggleAuto);
 undoBtn.addEventListener("click", undo);
 resetBtn.addEventListener("click", resetGame);
 nextLevelBtn.addEventListener("click", () => { levelIndex = (levelIndex + 1) % levels.length; resetGame(); });
-viewPicker.addEventListener("click", (event) => { const button = event.target.closest("button[data-view]"); if (button) setView(button.dataset.view); });
+runtime.bindSegmentedPicker(viewPicker, setView);
 window.addEventListener("resize", fitCanvas);
 resetGame();
 requestAnimationFrame(fitCanvas);

@@ -1,6 +1,8 @@
 const $ = (selector) => document.querySelector(selector);
 const canvas = $("#chart");
 const ctx = canvas.getContext("2d");
+const runtime = window.LabRuntime;
+const modelMath = window.LinearModel;
 const scoreValue = $("#scoreValue");
 const roundValue = $("#roundValue");
 const progressFill = $("#progressFill");
@@ -38,32 +40,28 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "fit";
-let autoTimer = null;
+const autoTrainer = runtime.createAutoTrainer({
+  button: autoBtn,
+  idleLabel: "自动训练",
+  activeLabel: "暂停自动",
+  intervalMs: 520,
+  step: trainStep,
+});
 
 function predict(x, model = state) {
-  return model.w * x + model.b;
+  return modelMath.predict(x, model);
 }
 
 function mse(model = state) {
-  return state.points.reduce((sum, point) => {
-    const error = predict(point.x, model) - point.y;
-    return sum + error * error;
-  }, 0) / state.points.length;
+  return modelMath.mse(state.points, model);
 }
 
 function gradient(model = state) {
-  let dw = 0;
-  let db = 0;
-  state.points.forEach((point) => {
-    const error = predict(point.x, model) - point.y;
-    dw += 2 * error * point.x;
-    db += 2 * error;
-  });
-  return { dw: dw / state.points.length, db: db / state.points.length };
+  return modelMath.gradient(state.points, model);
 }
 
 function score() {
-  return Math.max(0, Math.min(0.99, 1 - mse() / state.baseline));
+  return modelMath.score(state.points, state, state.baseline);
 }
 
 function resetGame() {
@@ -82,13 +80,10 @@ function resetGame() {
 
 function trainStep() {
   state.history.push({ w: state.w, b: state.b, round: state.round, best: state.best, loss: [...state.loss] });
-  let grad = gradient();
   const lr = Number(learningRate.value);
-  for (let i = 0; i < Number(batchSize.value); i += 1) {
-    grad = gradient();
-    state.w -= lr * grad.dw;
-    state.b -= lr * grad.db;
-  }
+  const trained = modelMath.train(state.points, state, lr, Number(batchSize.value));
+  state.w = trained.w;
+  state.b = trained.b;
   state.round += 1;
   const currentMse = mse();
   state.loss.push(currentMse);
@@ -119,11 +114,11 @@ function updateHud() {
   const currentScore = score();
   state.best = Math.max(state.best, currentScore);
   const grad = gradient();
-  scoreValue.textContent = currentScore.toFixed(2);
-  roundValue.textContent = state.round;
-  targetLabel.textContent = `目标 ${levels[levelIndex].target.toFixed(2)}`;
-  progressFill.style.width = `${Math.round(Math.min(1, currentScore / levels[levelIndex].target) * 100)}%`;
-  bestLabel.textContent = state.round ? `最佳 ${state.best.toFixed(2)}` : "等待开始";
+  runtime.setText(scoreValue, currentScore.toFixed(2));
+  runtime.setText(roundValue, state.round);
+  runtime.setText(targetLabel, `目标 ${levels[levelIndex].target.toFixed(2)}`);
+  runtime.setProgress(progressFill, currentScore / levels[levelIndex].target);
+  runtime.setText(bestLabel, state.round ? `最佳 ${state.best.toFixed(2)}` : "等待开始");
   rateLabel.textContent = Number(learningRate.value).toFixed(2);
   batchLabel.textContent = batchSize.value;
   formulaLabel.textContent = `y=${state.w.toFixed(2)}x${state.b >= 0 ? "+" : ""}${state.b.toFixed(2)}`;
@@ -135,55 +130,26 @@ function updateHud() {
   bestScoreLabel.textContent = state.best.toFixed(2);
 }
 
-function stopAuto() {
-  if (autoTimer) clearInterval(autoTimer);
-  autoTimer = null;
-  autoBtn.textContent = "自动训练";
-}
-
-function toggleAuto() {
-  if (autoTimer) {
-    stopAuto();
-    return;
-  }
-  autoBtn.textContent = "暂停自动";
-  trainStep();
-  autoTimer = setInterval(trainStep, 520);
-}
+function stopAuto() { autoTrainer.stop(); }
+function toggleAuto() { autoTrainer.toggle(); }
 
 function renderPickers() {
-  levelPicker.innerHTML = "";
-  levels.forEach((level, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = level.shortName;
-    button.className = index === levelIndex ? "active" : "";
-    button.addEventListener("click", () => {
-      levelIndex = index;
-      resetGame();
-    });
-    levelPicker.append(button);
+  runtime.renderChoicePicker(levelPicker, levels, levelIndex, (index) => {
+    levelIndex = index;
+    resetGame();
   });
 }
 
 function setView(next) {
   view = next;
-  viewPicker.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  runtime.setActiveSegment(viewPicker, view);
   const text = { fit: "拟合视图：蓝线是当前模型，黄色点是真实样本。", residual: "残差视图：红线越短，预测越接近样本。", gradient: "梯度视图：箭头显示参数下一步移动方向。", loss: "损失视图：MSE 曲线下降代表训练有效。" }[view];
   toast.textContent = text;
   latestText.textContent = text;
   draw();
 }
 
-function fitCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(rect.width * scale);
-  canvas.height = Math.floor(rect.height * scale);
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  draw();
-}
+const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw, { minWidth: 1, minHeight: 1 });
 
 function bounds() {
   const rect = canvas.getBoundingClientRect();
@@ -291,7 +257,7 @@ autoBtn.addEventListener("click", toggleAuto);
 undoBtn.addEventListener("click", undo);
 resetBtn.addEventListener("click", resetGame);
 nextLevelBtn.addEventListener("click", () => { levelIndex = (levelIndex + 1) % levels.length; resetGame(); });
-viewPicker.addEventListener("click", (event) => { const button = event.target.closest("button[data-view]"); if (button) setView(button.dataset.view); });
+runtime.bindSegmentedPicker(viewPicker, setView);
 window.addEventListener("resize", fitCanvas);
 resetGame();
 requestAnimationFrame(fitCanvas);

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>随机森林训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=26" />
+    <link rel="stylesheet" href="./styles.css?v=28" />
   </head>
   <body class="forest-page compact-lab-page">
     <nav class="lab-switch" aria-label="切换训练场">
@@ -52,6 +52,11 @@
           <p id="missionText">让多棵小树并联投票，减少单棵树的偶然错误。</p>
           <div class="progress-track" aria-hidden="true"><div id="progressFill"></div></div>
         </section>
+        <section class="panel-block contrast-card">
+          <h2>集成方式</h2>
+          <p><strong>随机森林是并联投票。</strong>每棵树独立看随机样本和特征，最后用多数票稳定边界。</p>
+          <a href="./gbm.html">对比 GBM 的串联补错</a>
+        </section>
         <section class="panel-block view-card">
           <h2>观察方式</h2>
           <div id="viewPicker" class="segmented">
@@ -88,6 +93,8 @@
         </section>
       </aside>
     </main>
-    <script src="./forest.js?v=2"></script>
+    <script src="./models/forest-model.js?v=1"></script>
+    <script src="./lab-runtime.js?v=1"></script>
+    <script src="./forest.js?v=3"></script>
   </body>
 </html>

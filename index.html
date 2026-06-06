@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>机器学习训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=26" />
+    <link rel="stylesheet" href="./styles.css?v=28" />
   </head>
   <body class="home-page">
     <main class="home-shell">
@@ -15,11 +15,24 @@
         <p>选一个算法，像玩街机一样观察它如何学习、犯错、收敛和通关。</p>
       </section>
 
+      <section class="ensemble-compare" aria-label="集成模型对照">
+        <a href="./gbm.html">
+          <span>Serial Boosting</span>
+          <strong>GBM：串联补错</strong>
+          <small>第 m 棵弱树专门追上一轮没解释掉的残差，模型一步步叠加。</small>
+        </a>
+        <a href="./forest.html">
+          <span>Parallel Voting</span>
+          <strong>随机森林：并联投票</strong>
+          <small>很多树各看一份随机样本和特征，最后用多数票抵消单棵树的偏差。</small>
+        </a>
+      </section>
+
       <nav class="lab-grid" aria-label="选择训练场">
         <a href="./gbm.html">
           <span>Boost Lab</span>
           <strong>GBM 梯度提升机</strong>
-          <small>一棵棵弱树串联补错。</small>
+          <small>串联：下一棵树专门补上一轮的残差。</small>
         </a>
         <a href="./svm.html">
           <span>SVM Arcade</span>
@@ -54,7 +67,7 @@
         <a href="./forest.html">
           <span>Forest Vote</span>
           <strong>随机森林</strong>
-          <small>多棵树并联投票抗噪声。</small>
+          <small>并联：多棵树独立学习，再多数投票抗噪声。</small>
         </a>
       </nav>
     </main>

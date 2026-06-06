@@ -1,5 +1,7 @@
 const canvas = document.querySelector("#chart");
 const ctx = canvas.getContext("2d");
+const runtime = window.LabRuntime;
+const modelMath = window.SvmModel;
 const mseValue = document.querySelector("#mseValue");
 const roundValue = document.querySelector("#roundValue");
 const progressFill = document.querySelector("#progressFill");
@@ -103,7 +105,13 @@ const levels = [
 let currentLevel = 0;
 let targetPoints = [];
 let state;
-let autoTimer = null;
+const autoTrainer = runtime.createAutoTrainer({
+  button: autoBtn,
+  idleLabel: "自动训练",
+  activeLabel: "暂停自动",
+  intervalMs: 760,
+  step: trainStep,
+});
 let activeView = "boundary";
 let latestStatus = "";
 let activeViewNote = "边界视图：蓝色区域判为负类，绿色区域判为正类；亮线是当前决策边界。";
@@ -206,13 +214,11 @@ function resetGame() {
 }
 
 function gamma() {
-  return 0.45 + Number(kernelPower.value) * 0.34;
+  return modelMath.gamma(kernelPower.value);
 }
 
 function kernel(a, b) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.exp(-gamma() * (dx * dx + dy * dy));
+  return modelMath.kernel(a, b, gamma());
 }
 
 function noiseField(point, round = state.round) {
@@ -236,42 +242,17 @@ function classify(point) {
 }
 
 function metrics(alpha = state.alpha, bias = state.bias) {
-  let hinge = 0;
-  let correct = 0;
-  let outsideMargin = 0;
-  let supportCount = 0;
-  let violations = 0;
-  targetPoints.forEach((point) => {
-    const signed = point.label * scorePointWith(point, alpha, bias);
-    hinge += Math.max(0, 1 - signed);
-    if (signed > 0) correct += 1;
-    if (signed >= 1) outsideMargin += 1;
-    if (signed > -0.15 && signed < 1.18) supportCount += 1;
-    if (signed < 1) violations += 1;
-  });
-  hinge /= targetPoints.length;
-  const regularizer = alpha.reduce((sum, value) => sum + value * value, 0) * 0.012;
-  const accuracy = correct / targetPoints.length;
-  const marginRate = outsideMargin / targetPoints.length;
-  const score = Math.max(0, Math.min(0.99, accuracy * 0.62 + marginRate * 0.38 - state.overfit * 0.16));
-  const activeVectors = alpha.filter((value) => value > 0.01).length;
-  return { hinge, objective: hinge + regularizer, accuracy, marginRate, score, supportCount, violations, activeVectors };
+  return modelMath.metrics(targetPoints, alpha, bias, gamma(), state.overfit);
 }
 
 function scorePointWith(point, alpha, bias) {
-  let score = bias;
-  targetPoints.forEach((sample, index) => {
-    if (alpha[index] > 0.0001) score += alpha[index] * sample.label * kernel(point, sample);
-  });
-  return score;
+  return modelMath.scorePoint(targetPoints, point, alpha, bias, gamma());
 }
 
 function trainStep() {
   const before = metrics();
   const c = Number(penaltyC.value);
   const complexity = Number(kernelPower.value);
-  const nextRound = state.round + 1;
-
   state.history.push({
     alpha: [...state.alpha],
     bias: state.bias,
@@ -283,23 +264,12 @@ function trainStep() {
     overfit: state.overfit,
   });
 
-  const lr = 0.055;
-  const order = [...targetPoints].sort((a, b) => ((a.index * 7 + nextRound * 3) % 11) - ((b.index * 7 + nextRound * 3) % 11));
-  order.forEach((point) => {
-    const index = point.index;
-    const signed = point.label * scorePointWith(point, state.alpha, state.bias);
-    state.alpha[index] *= 1 - lr * 0.028;
-    if (signed < 1) {
-      const push = lr * c * (1 - signed);
-      state.alpha[index] = Math.min(4.5, state.alpha[index] + push);
-      state.bias += lr * c * point.label * 0.11;
-    }
-    if (signed > 1.6) state.alpha[index] *= 0.985;
-  });
-
-  const shouldOverfit = c >= 3.2 && complexity >= 7 && nextRound >= 5;
-  state.overfit = shouldOverfit ? Math.min(1, state.overfit + 0.18) : Math.max(0, state.overfit - 0.08);
-  state.round = nextRound;
+  const trained = modelMath.train(targetPoints, state.alpha, state.bias, c, complexity, state.round, state.overfit);
+  state.alpha = trained.alpha;
+  state.bias = trained.bias;
+  state.overfit = trained.overfit;
+  state.round = trained.round;
+  const shouldOverfit = trained.shouldOverfit;
   const after = metrics();
   state.bestScore = Math.max(state.bestScore, after.score);
   state.lossHistory.push(after.objective);
@@ -330,7 +300,7 @@ function trainStep() {
     toast.textContent = `通关！目标间隔得分 ${levels[currentLevel].target.toFixed(2)}，你在第 ${state.completedRound} 轮达成。`;
     setLatestStatus(toast.textContent, true);
     stopAuto();
-  } else if (autoTimer && state.round > 10 && Math.abs(before.objective - after.objective) < 0.002) {
+  } else if (autoTrainer.isRunning() && state.round > 10 && Math.abs(before.objective - after.objective) < 0.002) {
     toast.textContent = "训练进入平台期：切到“间隔”或“向量”视图，看看是不是 C 太低或核复杂度不够。";
     setLatestStatus(toast.textContent, true);
     stopAuto();
@@ -414,11 +384,11 @@ function updateHud() {
   const level = levels[currentLevel];
   const result = metrics();
   state.bestScore = Math.max(state.bestScore, result.score);
-  mseValue.textContent = result.score.toFixed(2);
-  roundValue.textContent = state.round;
-  bestLabel.textContent = state.round ? `最佳 ${state.bestScore.toFixed(2)}` : "等待开始";
-  targetLabel.textContent = `目标 ${level.target.toFixed(2)}`;
-  progressFill.style.width = `${Math.round(Math.min(1, result.score / level.target) * 100)}%`;
+  runtime.setText(mseValue, result.score.toFixed(2));
+  runtime.setText(roundValue, state.round);
+  runtime.setText(bestLabel, state.round ? `最佳 ${state.bestScore.toFixed(2)}` : "等待开始");
+  runtime.setText(targetLabel, `目标 ${level.target.toFixed(2)}`);
+  runtime.setProgress(progressFill, result.score / level.target);
   rateLabel.textContent = Number(penaltyC.value).toFixed(1);
   depthLabel.textContent = `${kernelPower.value} 级`;
   updateBoundaryData(result);
@@ -437,23 +407,8 @@ function updateBoundaryData(result = metrics()) {
   gammaLabel.textContent = gamma().toFixed(2);
 }
 
-function stopAuto() {
-  if (autoTimer) {
-    clearInterval(autoTimer);
-    autoTimer = null;
-  }
-  autoBtn.textContent = "自动训练";
-}
-
-function toggleAuto() {
-  if (autoTimer) {
-    stopAuto();
-    return;
-  }
-  autoBtn.textContent = "暂停自动";
-  trainStep();
-  autoTimer = setInterval(trainStep, 760);
-}
+function stopAuto() { autoTrainer.stop(); }
+function toggleAuto() { autoTrainer.toggle(); }
 
 function nextLevel() {
   currentLevel = (currentLevel + 1) % levels.length;
@@ -462,38 +417,20 @@ function nextLevel() {
 
 function setView(view) {
   activeView = view;
-  viewPicker.querySelectorAll("button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.view === view);
-  });
+  runtime.setActiveSegment(viewPicker, view);
   toast.textContent = viewNotes[view];
   setActiveViewNote(viewNotes[view], true);
   draw();
 }
 
 function updatePickers() {
-  levelPicker.innerHTML = "";
-  levels.forEach((level, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = index === currentLevel ? "active" : "";
-    button.textContent = level.shortName;
-    button.addEventListener("click", () => {
-      currentLevel = index;
-      resetGame();
-    });
-    levelPicker.append(button);
+  runtime.renderChoicePicker(levelPicker, levels, currentLevel, (index) => {
+    currentLevel = index;
+    resetGame();
   });
 }
 
-function fitCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.max(320, Math.floor(rect.width * scale));
-  canvas.height = Math.max(260, Math.floor(rect.height * scale));
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  draw();
-}
+const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
 
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
@@ -735,10 +672,7 @@ logOverlay.addEventListener("click", (event) => {
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !logOverlay.hidden) closeLogModal();
 });
-viewPicker.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-view]");
-  if (button) setView(button.dataset.view);
-});
+runtime.bindSegmentedPicker(viewPicker, setView);
 window.addEventListener("resize", fitCanvas);
 
 resetGame();

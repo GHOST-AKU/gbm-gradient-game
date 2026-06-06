@@ -1,6 +1,8 @@
 const $ = (selector) => document.querySelector(selector);
 const canvas = $("#chart");
 const ctx = canvas.getContext("2d");
+const runtime = window.LabRuntime;
+const modelMath = window.NeuralNetworkModel;
 const scoreValue = $("#scoreValue");
 const roundValue = $("#roundValue");
 const progressFill = $("#progressFill");
@@ -37,55 +39,30 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "weights";
-let autoTimer = null;
+const autoTrainer = runtime.createAutoTrainer({
+  button: autoBtn,
+  idleLabel: "自动训练",
+  activeLabel: "暂停自动",
+  intervalMs: 650,
+  step: trainStep,
+});
 
-function sigmoid(x) { return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, x)))); }
+function sigmoid(x) { return modelMath.sigmoid(x); }
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function makeNet() {
-  return {
-    h: [
-      { wx: 1.7, wy: 1.4, b: -0.15, v: 0.7 },
-      { wx: -1.5, wy: -1.2, b: -0.1, v: 0.7 },
-      { wx: 1.2, wy: -1.6, b: 0.05, v: -0.6 },
-      { wx: -1.4, wy: 1.3, b: 0.08, v: -0.6 },
-    ],
-    outB: 0,
-  };
+  return modelMath.makeNet();
 }
 
 function forward(point, net = state.net) {
-  const hidden = net.h.map((unit) => Math.tanh(unit.wx * point.x + unit.wy * point.y + unit.b));
-  const z = hidden.reduce((sum, value, index) => sum + value * net.h[index].v, net.outB);
-  return { hidden, p: sigmoid(z), z };
+  return modelMath.forward(point, net);
 }
 
 function metrics() {
-  let loss = 0, correct = 0, confidence = 0;
-  state.points.forEach((point) => {
-    const p = Math.min(0.999, Math.max(0.001, forward(point).p));
-    loss += -(point.label * Math.log(p) + (1 - point.label) * Math.log(1 - p));
-    if ((p >= 0.5 ? 1 : 0) === point.label) correct += 1;
-    confidence += Math.abs(p - 0.5) * 2;
-  });
-  loss /= state.points.length;
-  const accuracy = correct / state.points.length;
-  confidence /= state.points.length;
-  const score = Math.max(0, Math.min(0.99, accuracy * 0.74 + confidence * 0.26 - Math.max(0, loss - 0.25) * 0.05));
-  return { loss, accuracy, confidence, score };
+  return modelMath.metrics(state.points, state.net);
 }
 
 function hardestPointIndex() {
-  let bestIndex = 0;
-  let bestError = -1;
-  state.points.forEach((point, index) => {
-    const out = forward(point);
-    const error = Math.abs(out.p - point.label);
-    if (error > bestError) {
-      bestError = error;
-      bestIndex = index;
-    }
-  });
-  return bestIndex;
+  return modelMath.hardestPointIndex(state.points, state.net);
 }
 
 function resetGame() {
@@ -102,35 +79,13 @@ function resetGame() {
 }
 
 function cloneNet(net) {
-  return { h: net.h.map((unit) => ({ ...unit })), outB: net.outB };
+  return modelMath.cloneNet(net);
 }
 
 function trainStep() {
   state.history.push({ net: cloneNet(state.net), round: state.round, best: state.best, lossHistory: [...state.lossHistory], signalPointIndex: state.signalPointIndex });
   const lr = Number(learningRate.value);
-  for (let epoch = 0; epoch < Number(epochsPerStep.value); epoch += 1) {
-    const grads = { h: state.net.h.map(() => ({ wx: 0, wy: 0, b: 0, v: 0 })), outB: 0 };
-    state.points.forEach((point) => {
-      const out = forward(point);
-      const dz = out.p - point.label;
-      grads.outB += dz;
-      state.net.h.forEach((unit, index) => {
-        grads.h[index].v += dz * out.hidden[index];
-        const dh = dz * unit.v * (1 - out.hidden[index] * out.hidden[index]);
-        grads.h[index].wx += dh * point.x;
-        grads.h[index].wy += dh * point.y;
-        grads.h[index].b += dh;
-      });
-    });
-    const n = state.points.length;
-    state.net.outB -= lr * grads.outB / n;
-    state.net.h.forEach((unit, index) => {
-      unit.v -= lr * grads.h[index].v / n;
-      unit.wx -= lr * grads.h[index].wx / n;
-      unit.wy -= lr * grads.h[index].wy / n;
-      unit.b -= lr * grads.h[index].b / n;
-    });
-  }
+  state.net = modelMath.train(state.points, state.net, lr, Number(epochsPerStep.value));
   state.round += 1;
   const result = metrics();
   state.signalPointIndex = hardestPointIndex();
@@ -166,11 +121,11 @@ function updateHud() {
   const result = metrics();
   state.best = Math.max(state.best, result.score);
   const norm = Math.sqrt(state.net.h.reduce((sum, unit) => sum + unit.wx ** 2 + unit.wy ** 2 + unit.v ** 2, 0));
-  scoreValue.textContent = result.score.toFixed(2);
-  roundValue.textContent = state.round;
-  targetLabel.textContent = `目标 ${levels[levelIndex].target.toFixed(2)}`;
-  progressFill.style.width = `${Math.round(Math.min(1, result.score / levels[levelIndex].target) * 100)}%`;
-  bestLabel.textContent = state.round ? `最佳 ${state.best.toFixed(2)}` : "等待开始";
+  runtime.setText(scoreValue, result.score.toFixed(2));
+  runtime.setText(roundValue, state.round);
+  runtime.setText(targetLabel, `目标 ${levels[levelIndex].target.toFixed(2)}`);
+  runtime.setProgress(progressFill, result.score / levels[levelIndex].target);
+  runtime.setText(bestLabel, state.round ? `最佳 ${state.best.toFixed(2)}` : "等待开始");
   rateLabel.textContent = Number(learningRate.value).toFixed(2);
   epochLabel.textContent = epochsPerStep.value;
   accuracyLabel.textContent = `${Math.round(result.accuracy * 100)}%`;
@@ -181,37 +136,24 @@ function updateHud() {
   bestScoreLabel.textContent = state.best.toFixed(2);
 }
 
-function stopAuto() { if (autoTimer) clearInterval(autoTimer); autoTimer = null; autoBtn.textContent = "自动训练"; }
-function toggleAuto() { if (autoTimer) return stopAuto(); autoBtn.textContent = "暂停自动"; trainStep(); autoTimer = setInterval(trainStep, 650); }
+function stopAuto() { autoTrainer.stop(); }
+function toggleAuto() { autoTrainer.toggle(); }
 
 function renderPickers() {
-  levelPicker.innerHTML = "";
-  levels.forEach((level, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = level.shortName;
-    button.className = index === levelIndex ? "active" : "";
-    button.addEventListener("click", () => { levelIndex = index; resetGame(); });
-    levelPicker.append(button);
+  runtime.renderChoicePicker(levelPicker, levels, levelIndex, (index) => {
+    levelIndex = index;
+    resetGame();
   });
 }
 
 function setView(next) {
   view = next;
-  viewPicker.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.view === view));
+  runtime.setActiveSegment(viewPicker, view);
   const text = { field: "边界视图：背景显示网络输出概率。", neurons: "神经元视图：亮线展示隐藏单元各自学到的切分方向。", loss: "损失视图：曲线下降说明反向传播有效。", weights: "网络视图：2 个输入、4 个隐藏神经元、1 个输出，线宽表示权重，红色脉冲表示反向误差。" }[view];
   toast.textContent = text; latestText.textContent = text; draw();
 }
 
-function fitCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.floor(rect.width * scale);
-  canvas.height = Math.floor(rect.height * scale);
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = false;
-  draw();
-}
+const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw, { minWidth: 1, minHeight: 1 });
 
 function bounds() { const rect = canvas.getBoundingClientRect(); return { left: 4, top: 4, right: rect.width - 6, bottom: rect.height - 10, width: rect.width - 10, height: rect.height - 14 }; }
 function px(x, b) { return b.left + ((x + 1) / 2) * b.width; }
@@ -433,7 +375,7 @@ autoBtn.addEventListener("click", toggleAuto);
 undoBtn.addEventListener("click", undo);
 resetBtn.addEventListener("click", resetGame);
 nextLevelBtn.addEventListener("click", () => { levelIndex = (levelIndex + 1) % levels.length; resetGame(); });
-viewPicker.addEventListener("click", (event) => { const button = event.target.closest("button[data-view]"); if (button) setView(button.dataset.view); });
+runtime.bindSegmentedPicker(viewPicker, setView);
 window.addEventListener("resize", fitCanvas);
 resetGame();
 requestAnimationFrame(fitCanvas);
