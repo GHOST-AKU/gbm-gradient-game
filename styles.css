@@ -12,6 +12,11 @@
   --danger: #ff5f57;
   --blue: #3bd7ff;
   --violet: #b778ff;
+  --viz-positive: var(--accent);
+  --viz-negative: var(--blue);
+  --viz-focus: var(--accent-2);
+  --viz-error: var(--danger);
+  --viz-previous: #a8b0bd;
   --grid: rgba(139, 211, 255, 0.12);
   --pixel-shadow: #05060c;
   --shadow: 8px 8px 0 #05060c;
@@ -868,6 +873,61 @@ button.secondary {
   text-decoration: none;
 }
 
+.shape-card {
+  display: grid;
+  gap: 7px;
+  border-color: #405b89;
+  background: #0f192a;
+}
+
+.shape-readout {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.shape-readout div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding-top: 5px;
+  border-top: 1px solid rgba(139, 211, 255, 0.16);
+}
+
+.shape-readout div:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.shape-readout dt,
+.shape-readout dd {
+  margin: 0;
+}
+
+.shape-readout dt {
+  color: var(--viz-focus);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.shape-readout dd {
+  color: #c8d1de;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.shape-readout div:last-child dt {
+  color: var(--viz-error);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--viz-focus);
+  outline-offset: 3px;
+}
+
 .gbm-page .control-panel {
   max-height: calc(100vh - 62px);
   overflow: auto;
@@ -1219,7 +1279,26 @@ button.secondary {
     margin: 0 10px;
   }
 
+  .nn-page .canvas-wrap {
+    min-height: 590px;
+  }
+
   .legend {
     padding-inline: 16px;
+  }
+
+  .shape-readout div {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

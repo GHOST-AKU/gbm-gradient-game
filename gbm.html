@@ -42,7 +42,7 @@
         <div id="toast" class="toast" role="status">先看蓝线的平均猜测，再训练第一棵弱树追残差。</div>
 
         <div class="canvas-wrap">
-          <canvas id="chart" width="980" height="520"></canvas>
+          <canvas id="chart" width="980" height="520">GBM 模型交互图：使用观察方式切换模型、残差、弱树和误差视图。</canvas>
         </div>
 
         <div class="legend" aria-label="图例">
@@ -81,6 +81,15 @@
             <button type="button" data-view="learner">弱树</button>
             <button type="button" data-view="loss">误差</button>
           </div>
+        </section>
+
+        <section class="panel-block shape-card" aria-label="GBM 模型形态速读">
+          <h2>形态速读</h2>
+          <dl class="shape-readout">
+            <div><dt>长什么样</dt><dd>多段常数弱树按顺序叠加成一条分段函数。</dd></div>
+            <div><dt>本轮看点</dt><dd>红色残差被新弱树吃掉，黄色步长推动蓝色模型。</dd></div>
+            <div><dt>失控信号</dt><dd>学习率过大或分段过多时，曲线开始追着噪声抖动。</dd></div>
+          </dl>
         </section>
 
         <section class="panel-block contrast-card">

@@ -43,7 +43,7 @@
         <div id="toast" class="toast" role="status">先拖动质心，或直接迭代一步。</div>
 
         <div class="canvas-wrap">
-          <canvas id="chart" width="980" height="520"></canvas>
+          <canvas id="chart" width="980" height="520">K-Means 交互图：展示样本归属、质心地盘和移动轨迹。</canvas>
         </div>
 
         <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
@@ -80,6 +80,15 @@
             <button type="button" data-view="motion">移动</button>
             <button type="button" data-view="loss">损失</button>
           </div>
+        </section>
+
+        <section class="panel-block shape-card" aria-label="K-Means 模型形态速读">
+          <h2>形态速读</h2>
+          <dl class="shape-readout">
+            <div><dt>长什么样</dt><dd>质心把平面切成最近邻地盘，每个样本归向最近中心。</dd></div>
+            <div><dt>本轮看点</dt><dd>先重新分配样本，再看质心尾迹是否缩短并趋于稳定。</dd></div>
+            <div><dt>失控信号</dt><dd>K 不合适会出现空簇，拉长或弯曲簇会被硬切成圆团。</dd></div>
+          </dl>
         </section>
 
         <section class="panel-block controls-card">

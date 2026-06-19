@@ -33,7 +33,7 @@
           </div>
         </div>
         <div id="toast" class="toast" role="status">训练一个小型 MLP，观察非线性边界如何长出来。</div>
-        <div class="canvas-wrap"><canvas id="chart" width="980" height="520"></canvas></div>
+        <div class="canvas-wrap"><canvas id="chart" width="980" height="520">神经网络交互图：展示非线性边界、隐藏神经元、网络权重和损失。</canvas></div>
         <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
           <span id="latestText">未训练：隐藏层还没有形成有效特征。</span>
           <span id="bestLabel">等待开始</span>
@@ -48,18 +48,26 @@
       <aside class="control-panel" aria-label="游戏控制">
         <section class="panel-block mission-card">
           <div class="panel-heading"><h2>关卡</h2><span id="targetLabel">目标 --</span></div>
-          <div id="levelPicker" class="choice-grid"></div>
+          <div id="levelPicker" class="choice-grid" aria-label="选择关卡"></div>
           <p id="missionText">用隐藏层弯出非线性边界，解决线性模型切不开的样本。</p>
           <div class="progress-track" aria-hidden="true"><div id="progressFill"></div></div>
         </section>
         <section class="panel-block view-card">
           <h2>观察方式</h2>
-          <div id="viewPicker" class="segmented">
+          <div id="viewPicker" class="segmented" aria-label="选择观察方式">
             <button type="button" data-view="field">边界</button>
             <button type="button" data-view="neurons">神经元</button>
             <button type="button" data-view="loss">损失</button>
             <button type="button" data-view="weights" class="active">网络</button>
           </div>
+        </section>
+        <section class="panel-block shape-card" aria-label="神经网络模型形态速读">
+          <h2>形态速读</h2>
+          <dl class="shape-readout">
+            <div><dt>长什么样</dt><dd>多个隐藏神经元先切出简单方向，再组合成弯曲边界。</dd></div>
+            <div><dt>本轮看点</dt><dd>最难样本的误差反传，连接权重和隐藏激活随之改变。</dd></div>
+            <div><dt>失控信号</dt><dd>权重持续变强但损失不降，通常意味着学习步幅不合适。</dd></div>
+          </dl>
         </section>
         <section class="panel-block controls-card">
           <h2>训练控制</h2>

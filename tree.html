@@ -43,7 +43,7 @@
         <div id="toast" class="toast" role="status">先观察最混乱的叶子，再选择切分线。</div>
 
         <div class="canvas-wrap">
-          <canvas id="chart" width="980" height="520"></canvas>
+          <canvas id="chart" width="980" height="520">决策树交互图：展示候选切分、矩形叶子区域和树形结构。</canvas>
         </div>
 
         <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
@@ -80,6 +80,15 @@
             <button type="button" data-view="tree">树形</button>
             <button type="button" data-view="errors">错分</button>
           </div>
+        </section>
+
+        <section class="panel-block shape-card" aria-label="决策树模型形态速读">
+          <h2>形态速读</h2>
+          <dl class="shape-readout">
+            <div><dt>长什么样</dt><dd>横纵切分线把平面切成矩形叶子，每块区域做多数判断。</dd></div>
+            <div><dt>本轮看点</dt><dd>候选切分是否让子叶更纯，Gini 增益是否足够明显。</dd></div>
+            <div><dt>失控信号</dt><dd>深度过高会产生很多小碎块，训练正确但解释变差。</dd></div>
+          </dl>
         </section>
 
         <section class="panel-block controls-card">

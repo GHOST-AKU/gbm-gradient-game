@@ -6,7 +6,8 @@
   "scripts": {
     "serve": "node scripts/serve.cjs",
     "check": "node scripts/check-js.cjs",
+    "visual:check": "node scripts/check-visual-contract.cjs",
     "smoke": "node scripts/smoke-models.cjs && node scripts/smoke-labs.cjs",
-    "test": "npm run check && npm run smoke"
+    "test": "npm run check && npm run visual:check && npm run smoke"
   }
 }

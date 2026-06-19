@@ -33,7 +33,7 @@
           </div>
         </div>
         <div id="toast" class="toast" role="status">种下一棵随机树，看森林投票如何稳定边界。</div>
-        <div class="canvas-wrap"><canvas id="chart" width="980" height="520"></canvas></div>
+        <div class="canvas-wrap"><canvas id="chart" width="980" height="520">随机森林交互图：展示树的切分、投票边界和置信度。</canvas></div>
         <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
           <span id="latestText">未训练：森林里还没有树。</span>
           <span id="bestLabel">等待开始</span>
@@ -48,7 +48,7 @@
       <aside class="control-panel" aria-label="游戏控制">
         <section class="panel-block mission-card">
           <div class="panel-heading"><h2>关卡</h2><span id="targetLabel">目标 --</span></div>
-          <div id="levelPicker" class="choice-grid"></div>
+          <div id="levelPicker" class="choice-grid" aria-label="选择关卡"></div>
           <p id="missionText">让多棵小树并联投票，减少单棵树的偶然错误。</p>
           <div class="progress-track" aria-hidden="true"><div id="progressFill"></div></div>
         </section>
@@ -59,12 +59,20 @@
         </section>
         <section class="panel-block view-card">
           <h2>观察方式</h2>
-          <div id="viewPicker" class="segmented">
+          <div id="viewPicker" class="segmented" aria-label="选择观察方式">
             <button type="button" data-view="vote" class="active">投票</button>
             <button type="button" data-view="trees">森林</button>
             <button type="button" data-view="margin">信心</button>
             <button type="button" data-view="errors">错分</button>
           </div>
+        </section>
+        <section class="panel-block shape-card" aria-label="随机森林模型形态速读">
+          <h2>形态速读</h2>
+          <dl class="shape-readout">
+            <div><dt>长什么样</dt><dd>许多矩形切分树并联，各自判断后用多数票定边界。</dd></div>
+            <div><dt>本轮看点</dt><dd>新树带来一张独立选票，投票信心应逐渐稳定。</dd></div>
+            <div><dt>失控信号</dt><dd>树太少时边界摇摆，树太深时会把噪声当规则。</dd></div>
+          </dl>
         </section>
         <section class="panel-block controls-card">
           <h2>训练控制</h2>

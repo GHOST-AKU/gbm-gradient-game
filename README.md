@@ -58,9 +58,12 @@ npm run smoke
 ```bash
 npm run serve  # 启动本地静态服务器
 npm run check  # 检查全部 JavaScript 语法
+npm run visual:check # 检查八个训练场的可视化结构约定
 npm run smoke  # 运行纯模型与页面通关 smoke
 npm test       # 完整检查
 ```
+
+颜色、线型、形态速读和 Canvas 可访问性约定见 `VISUAL_LANGUAGE.md`。
 
 ## 项目结构
 

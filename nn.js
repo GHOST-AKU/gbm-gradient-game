@@ -155,7 +155,35 @@ function setView(next) {
 
 const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw, { minWidth: 1, minHeight: 1 });
 
-function bounds() { const rect = canvas.getBoundingClientRect(); return { left: 4, top: 4, right: rect.width - 6, bottom: rect.height - 10, width: rect.width - 10, height: rect.height - 14 }; }
+function bounds() {
+  const rect = canvas.getBoundingClientRect();
+  if (rect.width < 700) {
+    const gap = 12;
+    const panelHeight = Math.min(280, Math.max(230, rect.height * 0.48));
+    const plotBottom = rect.height - panelHeight - gap;
+    return {
+      left: 4,
+      top: 4,
+      right: rect.width - 6,
+      bottom: plotBottom - 4,
+      width: rect.width - 10,
+      height: plotBottom - 8,
+      panel: { x: 4, y: plotBottom + gap, w: rect.width - 10, h: panelHeight - 10 },
+    };
+  }
+  const panelWidth = Math.min(350, Math.max(280, rect.width * 0.34));
+  const gap = 14;
+  const plotRight = Math.max(340, rect.width - panelWidth - gap);
+  return {
+    left: 4,
+    top: 4,
+    right: plotRight - 6,
+    bottom: rect.height - 10,
+    width: plotRight - 10,
+    height: rect.height - 14,
+    panel: { x: plotRight + gap, y: 4, w: rect.width - plotRight - gap - 6, h: rect.height - 14 },
+  };
+}
 function px(x, b) { return b.left + ((x + 1) / 2) * b.width; }
 function py(y, b) { return b.bottom - ((y + 1) / 2) * b.height; }
 function pointAt(x, y, b) { return { x: ((x - b.left) / b.width) * 2 - 1, y: ((b.bottom - y) / b.height) * 2 - 1 }; }
@@ -172,7 +200,7 @@ function draw() {
     drawPoints(b);
   }
   drawAxes(b);
-  if (view === "weights") drawNetworkPanel(b);
+  drawNetworkPanel(b.panel);
 }
 
 function drawField(b) {
@@ -226,13 +254,7 @@ function drawAxes(b) {
   ctx.font = "12px Courier New, Microsoft YaHei, monospace"; ctx.fillText("特征 x2", b.left + 10, b.top + 18); ctx.textAlign = "right"; ctx.fillText("特征 x1", b.right - 8, b.bottom - 10); ctx.textAlign = "left";
 }
 
-function drawNetworkPanel(b) {
-  const panel = {
-    x: Math.round(b.left + b.width * 0.53),
-    y: Math.round(b.top + 22),
-    w: Math.round(b.width * 0.43),
-    h: Math.round(b.height - 46),
-  };
+function drawNetworkPanel(panel) {
   const sample = state.points[state.signalPointIndex] || state.points[0];
   const out = forward(sample);
   const dz = out.p - sample.label;

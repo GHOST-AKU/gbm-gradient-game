@@ -42,7 +42,7 @@
         <div id="toast" class="toast" role="status">选择关卡和观察方式，然后训练第一轮 SVM。</div>
 
         <div class="canvas-wrap">
-          <canvas id="chart" width="980" height="520"></canvas>
+          <canvas id="chart" width="980" height="520">SVM 交互图：展示决策边界、间隔带、支持向量和损失。</canvas>
         </div>
 
         <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
@@ -81,6 +81,15 @@
             <button type="button" data-view="support">向量</button>
             <button type="button" data-view="loss">损失</button>
           </div>
+        </section>
+
+        <section class="panel-block shape-card" aria-label="SVM 模型形态速读">
+          <h2>形态速读</h2>
+          <dl class="shape-readout">
+            <div><dt>长什么样</dt><dd>一条决策边界夹着两侧间隔带，近边界样本决定位置。</dd></div>
+            <div><dt>本轮看点</dt><dd>支持向量被持续加权，违规点被推向间隔之外。</dd></div>
+            <div><dt>失控信号</dt><dd>C 与核复杂度过高时，边界会追着个别噪声弯折。</dd></div>
+          </dl>
         </section>
 
         <section class="panel-block controls-card">
