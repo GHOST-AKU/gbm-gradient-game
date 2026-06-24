@@ -21,9 +21,15 @@ const css = fs.readFileSync("styles.css", "utf8");
   assert(css.includes(token), `styles: missing ${token}`);
 });
 assert(css.includes("prefers-reduced-motion"), "styles: missing reduced-motion support");
+assert(css.includes("@media (max-width: 900px) and (orientation: portrait)"), "styles: mobile portrait must be a rotate-device gate");
+assert(css.includes("@media (max-width: 1100px) and (orientation: landscape)"), "styles: mobile landscape must keep the game layout");
 
 const neuralNetwork = fs.readFileSync("nn.js", "utf8");
 assert(neuralNetwork.includes("drawNetworkPanel(b.panel)"), "nn: network panel must use a dedicated canvas region");
-assert(neuralNetwork.includes("rect.width < 700"), "nn: split canvas needs a narrow-screen layout");
+assert(!neuralNetwork.includes("rect.width < 700"), "nn: network panel should not fall back to portrait stacking");
+assert(neuralNetwork.includes("const compact = rect.width < 760"), "nn: narrow landscape needs compact side-by-side bounds");
+assert(neuralNetwork.includes("const compactPanel = panel.h < 230"), "nn: compact landscape panel must avoid title collisions");
+assert(neuralNetwork.includes("drawWeightLabels"), "nn: dense weight labels need collision-aware layout");
+assert(neuralNetwork.includes("labelBlockers"), "nn: weight labels must avoid nodes and panel copy");
 
 console.log(`Visual contract passed for ${pages.length} labs.`);

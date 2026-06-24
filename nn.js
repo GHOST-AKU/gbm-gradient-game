@@ -157,23 +157,13 @@ const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw, { minWidth: 1, min
 
 function bounds() {
   const rect = canvas.getBoundingClientRect();
-  if (rect.width < 700) {
-    const gap = 12;
-    const panelHeight = Math.min(280, Math.max(230, rect.height * 0.48));
-    const plotBottom = rect.height - panelHeight - gap;
-    return {
-      left: 4,
-      top: 4,
-      right: rect.width - 6,
-      bottom: plotBottom - 4,
-      width: rect.width - 10,
-      height: plotBottom - 8,
-      panel: { x: 4, y: plotBottom + gap, w: rect.width - 10, h: panelHeight - 10 },
-    };
-  }
-  const panelWidth = Math.min(350, Math.max(280, rect.width * 0.34));
-  const gap = 14;
-  const plotRight = Math.max(340, rect.width - panelWidth - gap);
+  const compact = rect.width < 760;
+  const panelWidth = compact
+    ? Math.min(260, Math.max(190, rect.width * 0.42))
+    : Math.min(350, Math.max(280, rect.width * 0.34));
+  const gap = compact ? 10 : 14;
+  const minPlotWidth = compact ? Math.max(190, rect.width * 0.48) : 340;
+  const plotRight = Math.max(minPlotWidth, rect.width - panelWidth - gap);
   return {
     left: 4,
     top: 4,
@@ -265,6 +255,16 @@ function drawNetworkPanel(panel) {
   const inputY = [panel.y + panel.h * 0.34, panel.y + panel.h * 0.66];
   const hiddenY = state.net.h.map((_, index) => panel.y + panel.h * (0.2 + index * 0.2));
   const outputY = panel.y + panel.h * 0.5;
+  const compactPanel = panel.h < 230 || panel.w < 220;
+  const weightLabels = [];
+  const labelBlockers = [
+    ...(compactPanel ? [] : [{ x: panel.x + 8, y: panel.y + 4, w: panel.w - 16, h: 24 }]),
+    { x: panel.x + 8, y: panel.y + panel.h - 28, w: panel.w - 16, h: 24 },
+    ...inputY.map((y) => nodeLabelBlocker(xIn, y, 16)),
+    ...hiddenY.map((y) => nodeLabelBlocker(xHidden, y, 18)),
+    nodeLabelBlocker(xOut, outputY, 30),
+    { x: xHidden + 34, y: outputY + 54, w: panel.x + panel.w - xHidden - 46, h: 22 },
+  ];
 
   ctx.save();
   ctx.fillStyle = "rgba(5,6,12,0.86)";
@@ -274,15 +274,17 @@ function drawNetworkPanel(panel) {
   ctx.strokeRect(panel.x + 0.5, panel.y + 0.5, panel.w - 1, panel.h - 1);
   ctx.font = "12px Courier New, Microsoft YaHei, monospace";
   ctx.fillStyle = "#fff3d6";
-  ctx.fillText("2-4-1 NETWORK", panel.x + 12, panel.y + 18);
+  if (!compactPanel) ctx.fillText("2-4-1 NETWORK", panel.x + 12, panel.y + 18);
   ctx.fillStyle = "rgba(255,243,214,0.72)";
   ctx.fillText(`sample ${state.signalPointIndex + 1}  y=${sample.label}  p=${out.p.toFixed(2)}`, panel.x + 12, panel.y + panel.h - 12);
 
   state.net.h.forEach((unit, index) => {
-    drawWeightLine(xIn, inputY[0], xHidden, hiddenY[index], unit.wx, `x1 ${signed(unit.wx)}`);
-    drawWeightLine(xIn, inputY[1], xHidden, hiddenY[index], unit.wy, `x2 ${signed(unit.wy)}`);
-    drawWeightLine(xHidden, hiddenY[index], xOut, outputY, unit.v, `v ${signed(unit.v)}`);
+    const laneOffset = index % 2 === 0 ? 10 : -10;
+    drawWeightLine(xIn, inputY[0], xHidden, hiddenY[index], unit.wx, `x1 ${signed(unit.wx)}`, { labels: weightLabels, t: 0.31, normalOffset: -12 + laneOffset });
+    drawWeightLine(xIn, inputY[1], xHidden, hiddenY[index], unit.wy, `x2 ${signed(unit.wy)}`, { labels: weightLabels, t: 0.5, normalOffset: 12 + laneOffset });
+    drawWeightLine(xHidden, hiddenY[index], xOut, outputY, unit.v, `v ${signed(unit.v)}`, { labels: weightLabels, t: 0.56, normalOffset: index < 2 ? -12 : 12 });
   });
+  drawWeightLabels(weightLabels, panel, labelBlockers);
 
   inputValues.forEach((value, index) => {
     drawNode(xIn, inputY[index], 16, value, `x${index + 1}`, value.toFixed(2), "#3bd7ff");
@@ -301,7 +303,7 @@ function drawNetworkPanel(panel) {
   ctx.restore();
 }
 
-function drawWeightLine(x1, y1, x2, y2, weight, label) {
+function drawWeightLine(x1, y1, x2, y2, weight, label, labelOptions = {}) {
   const strength = clamp(Math.abs(weight) / 2.4, 0.12, 1);
   ctx.strokeStyle = weight >= 0 ? "#22f0a4" : "#3bd7ff";
   ctx.globalAlpha = 0.28 + strength * 0.64;
@@ -312,10 +314,92 @@ function drawWeightLine(x1, y1, x2, y2, weight, label) {
   ctx.stroke();
   ctx.globalAlpha = 1;
   if (strength > 0.42) {
-    ctx.fillStyle = weight >= 0 ? "#baffdf" : "#bdf2ff";
-    ctx.font = "10px Courier New, Microsoft YaHei, monospace";
-    ctx.fillText(label, x1 + (x2 - x1) * 0.46, y1 + (y2 - y1) * 0.46 - 3);
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const length = Math.hypot(dx, dy) || 1;
+    const normalOffset = labelOptions.normalOffset || 0;
+    const t = labelOptions.t == null ? 0.46 : labelOptions.t;
+    const nx = -dy / length;
+    const ny = dx / length;
+    const item = {
+      label,
+      color: weight >= 0 ? "#baffdf" : "#bdf2ff",
+      strength,
+      x: x1 + dx * t + nx * normalOffset,
+      y: y1 + dy * t + ny * normalOffset,
+      nx,
+      ny,
+    };
+    if (labelOptions.labels) labelOptions.labels.push(item);
+    else drawWeightLabel(item, { x: item.x, y: item.y, w: 0, h: 0 });
   }
+}
+
+function drawWeightLabels(labels, panel, blockers) {
+  const placed = [...blockers];
+  ctx.save();
+  ctx.font = "10px Courier New, Microsoft YaHei, monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  labels
+    .sort((a, b) => b.strength - a.strength)
+    .forEach((item) => {
+      const metrics = ctx.measureText(item.label);
+      const width = Math.ceil((metrics && metrics.width) || item.label.length * 6) + 8;
+      const height = 14;
+      const shifts = [0, 8, -8, 16, -16, 24, -24, 32, -32];
+      let bestRect = null;
+      let bestScore = Infinity;
+      shifts.forEach((shift, order) => {
+        const rect = fitLabelRect(item.x + item.nx * shift, item.y + item.ny * shift, width, height, panel);
+        const overlap = placed.reduce((sum, other) => sum + overlapArea(rect, other), 0);
+        const score = overlap * 100 + Math.abs(shift) + order * 0.01;
+        if (score < bestScore) {
+          bestScore = score;
+          bestRect = rect;
+        }
+      });
+      placed.push(bestRect);
+      drawWeightLabel(item, bestRect);
+    });
+  ctx.restore();
+}
+
+function drawWeightLabel(item, rect) {
+  if (!rect.w || !rect.h) {
+    ctx.fillStyle = item.color;
+    ctx.font = "10px Courier New, Microsoft YaHei, monospace";
+    ctx.fillText(item.label, item.x, item.y);
+    return;
+  }
+  ctx.fillStyle = "rgba(5,6,12,0.78)";
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.globalAlpha = 0.58;
+  ctx.strokeStyle = item.color;
+  ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w - 1, rect.h - 1);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = item.color;
+  ctx.fillText(item.label, rect.x + 4, rect.y + rect.h / 2);
+}
+
+function fitLabelRect(cx, cy, width, height, panel) {
+  return {
+    x: clamp(cx - width / 2, panel.x + 6, panel.x + panel.w - width - 6),
+    y: clamp(cy - height / 2, panel.y + 30, panel.y + panel.h - height - 30),
+    w: width,
+    h: height,
+  };
+}
+
+function overlapArea(a, b) {
+  const width = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+  const height = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+  return width * height;
+}
+
+function nodeLabelBlocker(x, y, r) {
+  const pad = 8;
+  return { x: x - r - pad, y: y - r - 22, w: (r + pad) * 2, h: r * 2 + 32 };
 }
 
 function drawNode(x, y, r, activation, name, value, color) {
@@ -374,7 +458,15 @@ function drawBackpropArrow(x1, y1, x2, y2, error) {
   ctx.closePath();
   ctx.fill();
   ctx.font = "11px Courier New, Microsoft YaHei, monospace";
-  ctx.fillText("backprop error", x2 + 16, y2 + 4);
+  const label = "backprop error";
+  const metrics = ctx.measureText(label);
+  const width = Math.ceil((metrics && metrics.width) || label.length * 7) + 8;
+  const labelX = x2 + 14;
+  const labelY = y2 + 32;
+  ctx.fillStyle = "rgba(5,6,12,0.78)";
+  ctx.fillRect(labelX - 4, labelY - 11, width, 14);
+  ctx.fillStyle = error >= 0 ? "#ff5f57" : "#ffd447";
+  ctx.fillText(label, labelX, labelY);
 }
 
 function signed(value) {
