@@ -1,6 +1,76 @@
 (function registerLabRuntime(global) {
+  const THEME_KEY = "ml-arcade-theme";
+  const LIGHT_THEME = "light";
+  const DARK_THEME = "dark";
+
   function setText(element, value) {
     if (element) element.textContent = value;
+  }
+
+  function readStoredTheme() {
+    try {
+      return global.localStorage && global.localStorage.getItem(THEME_KEY);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function writeStoredTheme(theme) {
+    try {
+      if (global.localStorage) global.localStorage.setItem(THEME_KEY, theme);
+    } catch (error) {
+      // Theme persistence is a convenience; keep the UI usable if storage is blocked.
+    }
+  }
+
+  function getThemeRoot() {
+    const root = global.document && (global.document.documentElement || global.document.body);
+    if (root && !root.dataset) root.dataset = {};
+    return root;
+  }
+
+  function normalizeTheme(theme) {
+    return theme === LIGHT_THEME ? LIGHT_THEME : DARK_THEME;
+  }
+
+  function applyTheme(theme, button) {
+    const normalized = normalizeTheme(theme);
+    const root = getThemeRoot();
+    if (root) root.dataset.theme = normalized;
+    if (button) {
+      const isLight = normalized === LIGHT_THEME;
+      button.textContent = isLight ? "暗色" : "浅色";
+      button.title = isLight ? "切换到暗色模式" : "切换到浅色模式";
+      button.setAttribute && button.setAttribute("aria-label", button.title);
+      button.setAttribute && button.setAttribute("aria-pressed", String(isLight));
+    }
+    return normalized;
+  }
+
+  function setupThemeToggle() {
+    if (!global.document) return null;
+    const root = getThemeRoot();
+    if (!root) return null;
+    const stored = readStoredTheme();
+    let theme = applyTheme(stored || DARK_THEME);
+    const button = global.document.createElement("button");
+    button.type = "button";
+    button.className = "theme-toggle";
+    button.addEventListener("click", () => {
+      theme = applyTheme(theme === LIGHT_THEME ? DARK_THEME : LIGHT_THEME, button);
+      writeStoredTheme(theme);
+    });
+    applyTheme(theme, button);
+    const nav = global.document.querySelector(".lab-switch");
+    if (nav && nav.append) nav.append(button);
+    else if (global.document.body && global.document.body.append) global.document.body.append(button);
+    return button;
+  }
+
+  function resetLabScroll() {
+    if (!global.document || !global.document.body) return;
+    if (global.document.body.classList && global.document.body.classList.contains("home-page")) return;
+    if (global.scrollTo) global.scrollTo(0, 0);
   }
 
   function setProgress(element, ratio) {
@@ -74,6 +144,9 @@
     };
   }
 
+  setupThemeToggle();
+  resetLabScroll();
+
   global.LabRuntime = {
     bindSegmentedPicker,
     createAutoTrainer,
@@ -82,5 +155,7 @@
     setActiveSegment,
     setProgress,
     setText,
+    resetLabScroll,
+    setupThemeToggle,
   };
 })(window);
