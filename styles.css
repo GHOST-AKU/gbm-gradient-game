@@ -982,7 +982,11 @@ input:focus-visible {
   outline-offset: 3px;
 }
 
-.gbm-page .control-panel {
+.gbm-page .control-panel,
+.svm-page .control-panel,
+.kmeans-page .control-panel,
+.tree-page .control-panel,
+.compact-lab-page .control-panel {
   max-height: calc(100vh - 62px);
   overflow: auto;
   padding-bottom: 8px;
