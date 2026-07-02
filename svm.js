@@ -6,9 +6,8 @@ const mseValue = document.querySelector("#mseValue");
 const roundValue = document.querySelector("#roundValue");
 const progressFill = document.querySelector("#progressFill");
 const toast = document.querySelector("#toast");
-const chartNote = document.querySelector("#chartNote");
-const latestText = document.querySelector("#latestText");
 const roundLog = document.querySelector("#roundLog");
+const emptyLog = document.querySelector("#emptyLog");
 const logCard = document.querySelector(".log-card");
 const expandLogBtn = document.querySelector("#expandLogBtn");
 const logOverlay = document.querySelector("#logOverlay");
@@ -113,12 +112,8 @@ const autoTrainer = runtime.createAutoTrainer({
   step: trainStep,
 });
 let activeView = "boundary";
-let latestStatus = "";
 let activeViewNote = "边界视图：蓝色区域判为负类，绿色区域判为正类；亮线是当前决策边界。";
-let latestTicker = null;
-let latestTickerIndex = 0;
 
-const idleLatestMessage = "未训练：样本已经摆好，第一轮会开始寻找最大间隔。";
 const viewNotes = {
   boundary: "边界视图：蓝色区域判为负类，绿色区域判为正类；亮线是当前决策边界。",
   margin: "间隔视图：两条虚线之间是 SVM 努力撑开的安全通道，落在里面的点会被继续惩罚。",
@@ -130,56 +125,10 @@ function makePoints(level) {
   return level.points.map(([x, y, label], index) => ({ x, y, label, index }));
 }
 
-function latestMessages() {
-  if (state?.completedRound !== null) {
-    const level = levels[currentLevel];
-    return [`通关！目标间隔得分 ${level.target.toFixed(2)}，你在第 ${state.completedRound} 轮达成。`];
-  }
-  const messages = [];
-  if (state?.logEntries?.length) messages.push(state.logEntries[0]);
-  if (latestStatus) messages.push(latestStatus);
-  messages.push(activeViewNote || idleLatestMessage);
-  if (!state?.logEntries?.length && !latestStatus) messages.unshift(idleLatestMessage);
-  return [...new Set(messages)];
-}
-
-function showLatestMessage(message, animate = false) {
-  latestText.textContent = message;
-  latestText.classList.remove("is-rolling");
-  if (animate) {
-    void latestText.offsetWidth;
-    latestText.classList.add("is-rolling");
-  }
-}
-
-function updateLatestTicker(reset = false) {
-  const messages = latestMessages();
-  if (reset) latestTickerIndex = 0;
-  latestTickerIndex %= messages.length;
-  showLatestMessage(messages[latestTickerIndex], false);
-
-  if (latestTicker) {
-    clearInterval(latestTicker);
-    latestTicker = null;
-  }
-  if (messages.length > 1) {
-    latestTicker = setInterval(() => {
-      const nextMessages = latestMessages();
-      latestTickerIndex = (latestTickerIndex + 1) % nextMessages.length;
-      showLatestMessage(nextMessages[latestTickerIndex], true);
-    }, 3000);
-  }
-}
-
-function setLatestStatus(message, reset = false) {
-  latestStatus = message;
-  updateLatestTicker(reset);
-}
-
 function setActiveViewNote(message, reset = false) {
   if (!reset && activeViewNote === message) return;
   activeViewNote = message;
-  updateLatestTicker(reset);
+  runtime.setShapeContext(message);
 }
 
 function resetGame() {
@@ -199,15 +148,11 @@ function resetGame() {
     completedRound: null,
     overfit: 0,
   };
-  if (roundLog) roundLog.innerHTML = "";
-  fullRoundLog.innerHTML = "";
-  if (logCard) logCard.classList.remove("has-logs");
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "先观察样本，再训练第一轮。SVM 会寻找能最大化分类间隔的边界。";
-  latestStatus = "";
-  activeViewNote = viewNotes[activeView];
-  updateLatestTicker(true);
+  setActiveViewNote(viewNotes[activeView], true);
+  renderLogLists();
   updatePickers();
   draw();
   updateHud();
@@ -278,12 +223,10 @@ function trainStep() {
   prependLog(`第 ${state.round} 轮  SV ${after.supportCount}  hinge ${after.hinge.toFixed(2)}  得分 ${after.score.toFixed(2)}`);
 
   toast.textContent = `第 ${state.round} 轮：违反间隔的样本被加权，边界向最大间隔移动；当前 ${supportText}。`;
-  setLatestStatus(toast.textContent, true);
   if (shouldOverfit) {
     toast.textContent = `OVERFIT MODE：你把噪声也学进去了。C=${c.toFixed(1)} + 核复杂度 ${complexity} 让边界开始乱抖。`;
     state.logEntries[0] = `过拟合警报  第 ${state.round} 轮  噪声抖动  得分 ${after.score.toFixed(2)}`;
     renderLogLists();
-    setLatestStatus(toast.textContent, true);
     if (roundLog?.firstElementChild) {
       roundLog.firstElementChild.textContent = `过拟合警报  第 ${state.round} 轮  噪声抖动  得分 ${after.score.toFixed(2)}`;
     }
@@ -298,11 +241,9 @@ function trainStep() {
 
   if (after.score >= levels[currentLevel].target && !shouldOverfit) {
     toast.textContent = `通关！目标间隔得分 ${levels[currentLevel].target.toFixed(2)}，你在第 ${state.completedRound} 轮达成。`;
-    setLatestStatus(toast.textContent, true);
     stopAuto();
   } else if (autoTrainer.isRunning() && state.round > 10 && Math.abs(before.objective - after.objective) < 0.002) {
     toast.textContent = "训练进入平台期：切到“间隔”或“向量”视图，看看是不是 C 太低或核复杂度不够。";
-    setLatestStatus(toast.textContent, true);
     stopAuto();
   }
 }
@@ -311,7 +252,6 @@ function undoStep() {
   const previous = state.history.pop();
   if (!previous) {
     toast.textContent = "还没有可以撤回的训练轮次。";
-    setLatestStatus(toast.textContent, true);
     return;
   }
   state.alpha = previous.alpha;
@@ -324,7 +264,6 @@ function undoStep() {
   state.overfit = previous.overfit;
   renderLogLists();
   toast.textContent = "撤回上一轮训练，边界回到上一轮状态。";
-  setLatestStatus(toast.textContent, true);
   draw();
   updateHud();
 }
@@ -339,7 +278,6 @@ function renderLogLists() {
   if (logCard) logCard.classList.toggle("has-logs", hasLogs);
   if (roundLog) roundLog.innerHTML = "";
   fullRoundLog.innerHTML = "";
-  updateLatestTicker(true);
 
   if (roundLog) {
     state.logEntries.slice(0, 1).forEach((message) => {
@@ -347,6 +285,7 @@ function renderLogLists() {
       item.textContent = message;
       roundLog.append(item);
     });
+    roundLog.hidden = !hasLogs;
   }
 
   state.logEntries.forEach((message) => {
@@ -356,6 +295,7 @@ function renderLogLists() {
   });
 
   modalEmptyLog.hidden = hasLogs;
+  if (emptyLog) emptyLog.hidden = hasLogs;
   fullRoundLog.hidden = !hasLogs;
 }
 

@@ -306,7 +306,7 @@ function renderLogLists() {
   roundLog.innerHTML = "";
   fullRoundLog.innerHTML = "";
 
-  state.logEntries.slice(0, 7).forEach((message) => {
+  state.logEntries.slice(0, 1).forEach((message) => {
     const item = document.createElement("li");
     item.textContent = message;
     roundLog.append(item);
@@ -383,6 +383,7 @@ function setView(view) {
     loss: "误差视图：看每轮 MSE 是否还在有效下降。",
   };
   toast.textContent = labels[view];
+  runtime.setShapeContext(labels[view]);
   draw();
 }
 

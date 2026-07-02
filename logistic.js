@@ -39,6 +39,7 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "prob";
+const trainingLog = runtime.createTrainingLog();
 const autoTrainer = runtime.createAutoTrainer({
   button: autoBtn,
   idleLabel: "自动训练",
@@ -63,6 +64,7 @@ function resetGame() {
   levelSubtitle.textContent = level.name;
   toast.textContent = "梯度下降会降低交叉熵，让正类概率升高、负类概率降低。";
   latestText.textContent = "未训练：所有点先按初始概率判断。";
+  trainingLog.reset();
   renderPickers();
   draw();
   updateHud();
@@ -79,6 +81,7 @@ function trainStep() {
   state.lossHistory.push(result.loss);
   toast.textContent = `第 ${state.round} 轮：边界向错分和低信心样本移动，交叉熵 ${result.loss.toFixed(3)}。`;
   latestText.textContent = `第 ${state.round} 轮  正确率 ${Math.round(result.accuracy * 100)}%  损失 ${result.loss.toFixed(3)}  得分 ${result.score.toFixed(2)}`;
+  trainingLog.add(latestText.textContent);
   draw();
   updateHud();
   if (result.score >= levels[levelIndex].target) {
@@ -95,6 +98,8 @@ function undo() {
     return;
   }
   Object.assign(state, previous);
+  latestText.textContent = state.round ? `已撤回到第 ${state.round} 轮。` : "未训练：所有点先按初始概率判断。";
+  trainingLog.removeLatest();
   draw();
   updateHud();
 }
@@ -131,7 +136,7 @@ function setView(next) {
   view = next;
   runtime.setActiveSegment(viewPicker, view);
   const text = { prob: "概率视图：背景越绿，模型越相信这里是正类。", boundary: "边界视图：亮线是 p=0.5 的分类边界。", loss: "损失视图：交叉熵下降代表概率更可信。", weights: "权重视图：两个权重决定边界方向，偏置决定平移。" }[view];
-  toast.textContent = text; latestText.textContent = text; draw();
+  toast.textContent = text; runtime.setShapeContext(text); draw();
 }
 
 const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw, { minWidth: 1, minHeight: 1 });

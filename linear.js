@@ -40,6 +40,7 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "fit";
+const trainingLog = runtime.createTrainingLog();
 const autoTrainer = runtime.createAutoTrainer({
   button: autoBtn,
   idleLabel: "自动训练",
@@ -73,6 +74,7 @@ function resetGame() {
   levelSubtitle.textContent = level.name;
   toast.textContent = "训练会沿着 MSE 的负梯度移动直线。";
   latestText.textContent = "未训练：直线从水平线开始，等待梯度下降。";
+  trainingLog.reset();
   renderPickers();
   draw();
   updateHud();
@@ -90,6 +92,7 @@ function trainStep() {
   state.best = Math.max(state.best, score());
   toast.textContent = `第 ${state.round} 轮：斜率和截距沿负梯度移动，MSE 降到 ${currentMse.toFixed(3)}。`;
   latestText.textContent = `第 ${state.round} 轮  MSE ${currentMse.toFixed(3)}  w ${state.w.toFixed(2)}  b ${state.b.toFixed(2)}`;
+  trainingLog.add(latestText.textContent);
   draw();
   updateHud();
   if (score() >= levels[levelIndex].target) {
@@ -106,6 +109,8 @@ function undo() {
     return;
   }
   Object.assign(state, previous);
+  latestText.textContent = state.round ? `已撤回到第 ${state.round} 轮。` : "未训练：直线从水平线开始，等待梯度下降。";
+  trainingLog.removeLatest();
   draw();
   updateHud();
 }
@@ -145,7 +150,7 @@ function setView(next) {
   runtime.setActiveSegment(viewPicker, view);
   const text = { fit: "拟合视图：蓝线是当前模型，黄色点是真实样本。", residual: "残差视图：红线越短，预测越接近样本。", gradient: "梯度视图：箭头显示参数下一步移动方向。", loss: "损失视图：MSE 曲线下降代表训练有效。" }[view];
   toast.textContent = text;
-  latestText.textContent = text;
+  runtime.setShapeContext(text);
   draw();
 }
 

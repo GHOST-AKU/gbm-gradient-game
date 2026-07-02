@@ -82,6 +82,7 @@ const levels = [
 let currentLevel = 0;
 let state;
 let activeView = "territory";
+const trainingLog = runtime.createTrainingLog();
 const autoTrainer = runtime.createAutoTrainer({
   button: autoBtn,
   idleLabel: "自动迭代",
@@ -141,6 +142,7 @@ function resetGame() {
   levelSubtitle.textContent = level.name;
   toast.textContent = "拖动质心，或让 K-Means 自动完成“分配 -> 移动”的循环。";
   latestText.textContent = "未迭代：每个样本会归到最近的质心旗下。";
+  trainingLog.reset();
   updatePickers();
   draw();
   updateHud();
@@ -167,6 +169,7 @@ function step() {
   const delta = before.inertia - after.inertia;
   toast.textContent = `第 ${state.round} 轮：样本重新站队，质心向各自簇中心移动，距离下降 ${Math.max(0, delta).toFixed(3)}。`;
   latestText.textContent = `第 ${state.round} 轮  簇内距离 ${after.inertia.toFixed(3)}  移动 ${after.movement.toFixed(2)}  得分 ${after.score.toFixed(2)}`;
+  trainingLog.add(latestText.textContent);
   draw();
   updateHud();
   if (after.score >= levels[currentLevel].target && after.movement < 0.035) {
@@ -177,6 +180,7 @@ function step() {
 }
 
 function undo() {
+  const currentRound = state.round;
   const previous = state.history.pop();
   if (!previous) {
     toast.textContent = "还没有可以撤回的迭代。";
@@ -189,6 +193,7 @@ function undo() {
   state.inertiaHistory = previous.inertiaHistory;
   toast.textContent = "撤回一步，质心回到上一轮位置。";
   latestText.textContent = state.round ? `回到第 ${state.round} 轮。` : "未迭代：每个样本会归到最近的质心旗下。";
+  if (state.round < currentRound) trainingLog.removeLatest();
   draw();
   updateHud();
 }
@@ -225,7 +230,7 @@ function setView(view) {
     loss: "损失视图：簇内距离下降，说明聚类正在收紧。",
   };
   toast.textContent = labels[view];
-  latestText.textContent = labels[view];
+  runtime.setShapeContext(labels[view]);
   draw();
 }
 
@@ -449,7 +454,7 @@ canvas.addEventListener("pointermove", (event) => {
   centroid.x = clamp(point.x);
   centroid.y = clamp(point.y);
   state.assignments = assign();
-  latestText.textContent = `拖动质心 ${dragging + 1}：地盘实时重新分配。`;
+  toast.textContent = `拖动质心 ${dragging + 1}：地盘实时重新分配。`;
   draw();
   updateHud();
 });
@@ -464,6 +469,8 @@ clusterCount.addEventListener("input", () => {
   state.assignments = assign();
   state.round = 0;
   state.inertiaHistory = [];
+  latestText.textContent = "K 值已改变：等待新一轮迭代。";
+  trainingLog.reset();
   updateHud();
   draw();
 });

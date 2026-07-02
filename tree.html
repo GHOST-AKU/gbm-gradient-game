@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>决策树训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=26" />
+    <link rel="stylesheet" href="./styles.css?v=33" />
   </head>
   <body class="tree-page">
     <nav class="lab-switch" aria-label="切换训练场">
@@ -46,11 +46,6 @@
           <canvas id="chart" width="980" height="520">决策树交互图：展示候选切分、矩形叶子区域和树形结构。</canvas>
         </div>
 
-        <div id="chartNote" class="chart-note latest-note fx-crt" role="status">
-          <span id="latestText">未切分：整张地图只有一个叶子，预测全靠多数票。</span>
-          <span id="bestLabel">等待开始</span>
-        </div>
-
         <div class="legend" aria-label="图例">
           <span><i class="sample-key positive-key"></i>正类样本</span>
           <span><i class="sample-key negative-key"></i>负类样本</span>
@@ -87,6 +82,7 @@
           <dl class="shape-readout">
             <div><dt>长什么样</dt><dd>横纵切分线把平面切成矩形叶子，每块区域做多数判断。</dd></div>
             <div><dt>本轮看点</dt><dd>候选切分是否让子叶更纯，Gini 增益是否足够明显。</dd></div>
+            <div><dt>当前视图</dt><dd data-shape-context>每个矩形叶子用多数票决定预测颜色。</dd></div>
             <div><dt>失控信号</dt><dd>深度过高会产生很多小碎块，训练正确但解释变差。</dd></div>
           </dl>
         </section>
@@ -133,11 +129,36 @@
             <span><b id="bestScoreLabel">--</b><small>最佳</small></span>
           </div>
         </section>
+
+        <section class="panel-block log-card" aria-label="训练记录">
+          <div class="panel-heading">
+            <h2>训练记录</h2>
+            <button id="expandLogBtn" class="mini-button" type="button" aria-haspopup="dialog">全屏</button>
+            <span id="bestLabel">等待开始</span>
+          </div>
+          <p id="latestText" class="log-current" role="status">未切分：整张地图只有一个叶子，预测全靠多数票。</p>
+          <p id="emptyLog" class="empty-log">还没有切分。每一刀会记录切分轴、阈值、Gini 增益和正确率。</p>
+          <ol id="roundLog" class="round-log"></ol>
+        </section>
       </aside>
     </main>
 
+    <section id="logOverlay" class="log-overlay" role="dialog" aria-modal="true" aria-labelledby="logOverlayTitle" hidden>
+      <div class="log-modal">
+        <div class="modal-heading">
+          <div><p class="eyebrow">Training Log</p><h2 id="logOverlayTitle">训练记录</h2></div>
+          <button id="closeLogBtn" class="mini-button danger" type="button">关闭</button>
+        </div>
+        <div class="modal-stats">
+          <span id="modalRoundLabel">轮次 0</span><span id="modalBestLabel">最佳 --</span><span id="modalLevelLabel">关卡 --</span>
+        </div>
+        <p id="modalEmptyLog" class="empty-log">还没有训练记录。</p>
+        <ol id="fullRoundLog" class="full-round-log"></ol>
+      </div>
+    </section>
+
     <script src="./models/tree-model.js?v=1"></script>
-    <script src="./lab-runtime.js?v=2"></script>
-    <script src="./tree.js?v=2"></script>
+    <script src="./lab-runtime.js?v=4"></script>
+    <script src="./tree.js?v=3"></script>
   </body>
 </html>

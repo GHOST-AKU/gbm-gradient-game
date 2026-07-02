@@ -39,6 +39,7 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "weights";
+const trainingLog = runtime.createTrainingLog();
 const autoTrainer = runtime.createAutoTrainer({
   button: autoBtn,
   idleLabel: "自动训练",
@@ -73,6 +74,7 @@ function resetGame() {
   levelSubtitle.textContent = level.name;
   toast.textContent = "每批训练会先前向计算概率，再把误差反向传回隐藏层。";
   latestText.textContent = "未训练：隐藏层还没有形成有效特征。";
+  trainingLog.reset();
   renderPickers();
   draw();
   updateHud();
@@ -93,6 +95,7 @@ function trainStep() {
   state.lossHistory.push(result.loss);
   toast.textContent = `第 ${state.round} 批：误差反向修正权重，损失 ${result.loss.toFixed(3)}。`;
   latestText.textContent = `第 ${state.round} 批  正确率 ${Math.round(result.accuracy * 100)}%  损失 ${result.loss.toFixed(3)}  得分 ${result.score.toFixed(2)}`;
+  trainingLog.add(latestText.textContent);
   draw();
   updateHud();
   if (result.score >= levels[levelIndex].target) {
@@ -113,6 +116,8 @@ function undo() {
   state.best = previous.best;
   state.lossHistory = previous.lossHistory;
   state.signalPointIndex = previous.signalPointIndex || 0;
+  latestText.textContent = state.round ? `已撤回到第 ${state.round} 批。` : "未训练：隐藏层还没有形成有效特征。";
+  trainingLog.removeLatest();
   draw();
   updateHud();
 }
@@ -150,7 +155,7 @@ function setView(next) {
   view = next;
   runtime.setActiveSegment(viewPicker, view);
   const text = { field: "边界视图：背景显示网络输出概率。", neurons: "神经元视图：亮线展示隐藏单元各自学到的切分方向。", loss: "损失视图：曲线下降说明反向传播有效。", weights: "网络视图：2 个输入、4 个隐藏神经元、1 个输出，线宽表示权重，红色脉冲表示反向误差。" }[view];
-  toast.textContent = text; latestText.textContent = text; draw();
+  toast.textContent = text; runtime.setShapeContext(text); draw();
 }
 
 const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw, { minWidth: 1, minHeight: 1 });

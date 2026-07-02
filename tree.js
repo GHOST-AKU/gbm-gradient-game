@@ -74,6 +74,7 @@ let state;
 let activeView = "regions";
 let splitAxis = "x";
 let nextLeafId = 1;
+const trainingLog = runtime.createTrainingLog();
 
 function makePoints(level) {
   return level.points.map(([x, y, label], index) => ({ x, y, label, index }));
@@ -142,6 +143,7 @@ function resetGame() {
   levelSubtitle.textContent = level.name;
   toast.textContent = "点击画布或拖动阈值，给当前最混乱的叶子找一刀。";
   latestText.textContent = "未切分：整张地图只有一个叶子，预测全靠多数票。";
+  trainingLog.reset();
   updatePickers();
   updateAxisButtons();
   draw();
@@ -185,6 +187,7 @@ function applySplit(useBest = false) {
   state.bestScore = Math.max(state.bestScore, result.score);
   toast.textContent = `切分叶子 #${leaf.id}：按 ${split.axis}=${split.value.toFixed(2)} 分裂，Gini 下降 ${split.gain.toFixed(3)}。`;
   latestText.textContent = `第 ${state.leaves.length - 1} 刀  叶子 ${state.leaves.length}  正确率 ${Math.round(result.accuracy * 100)}%  增益 ${split.gain.toFixed(3)}`;
+  trainingLog.add(latestText.textContent);
   updateAxisButtons();
   draw();
   updateHud();
@@ -205,6 +208,7 @@ function undo() {
   state.lastGain = previous.lastGain;
   nextLeafId = previous.nextLeafId;
   latestText.textContent = "撤回一刀，树回到上一版。";
+  trainingLog.removeLatest();
   draw();
   updateHud();
 }
@@ -239,7 +243,7 @@ function setView(view) {
     errors: "错分视图：被圈出的样本说明当前树还没解释好。",
   };
   toast.textContent = labels[view];
-  latestText.textContent = labels[view];
+  runtime.setShapeContext(labels[view]);
   draw();
 }
 

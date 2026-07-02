@@ -39,6 +39,7 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "vote";
+const trainingLog = runtime.createTrainingLog();
 const autoTrainer = runtime.createAutoTrainer({
   button: autoBtn,
   idleLabel: "自动造林",
@@ -156,6 +157,7 @@ function resetGame() {
   levelSubtitle.textContent = level.name;
   toast.textContent = "每棵树从 bootstrap 样本里学习，再加入森林投票。";
   latestText.textContent = "未训练：森林里还没有树。";
+  trainingLog.reset();
   renderPickers();
   draw();
   updateHud();
@@ -178,6 +180,7 @@ function trainTree() {
   state.best = Math.max(state.best, result.score);
   toast.textContent = `第 ${state.round} 棵树：用随机样本训练完成，森林正确率 ${Math.round(result.accuracy * 100)}%。`;
   latestText.textContent = `第 ${state.round} 棵树  正确率 ${Math.round(result.accuracy * 100)}%  信心 ${Math.round(result.margin * 100)}%  得分 ${result.score.toFixed(2)}`;
+  trainingLog.add(latestText.textContent);
   draw();
   updateHud();
   if (result.score >= levels[levelIndex].target && state.trees.length >= 3) {
@@ -197,6 +200,8 @@ function undo() {
   state.bags = previous.bags;
   state.round = previous.round;
   state.best = previous.best;
+  latestText.textContent = state.round ? `已砍回第 ${state.round} 棵树。` : "未训练：森林里还没有树。";
+  trainingLog.removeLatest();
   draw();
   updateHud();
 }
@@ -256,7 +261,7 @@ function setView(next) {
     margin: "信心视图：颜色越亮，越多树投成同一边，森林越稳定。",
     errors: "错分视图：红框标出当前森林还没投对的样本。"
   }[view];
-  toast.textContent = text; latestText.textContent = text; draw();
+  toast.textContent = text; runtime.setShapeContext(text); draw();
 }
 
 const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
