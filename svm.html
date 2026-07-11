@@ -5,20 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SVM 最大间隔训练场</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="./styles.css?v=33" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="svm-page">
-    <nav class="lab-switch" aria-label="切换训练场">
-      <a href="./index.html">首页</a>
-      <a href="./gbm.html">GBM 训练场</a>
-      <a href="./svm.html" class="active">SVM 训练场</a>
-      <a href="./kmeans.html">K-Means 训练场</a>
-      <a href="./tree.html">决策树训练场</a>
-      <a href="./linear.html">线性回归</a>
-      <a href="./logistic.html">逻辑回归</a>
-      <a href="./nn.html">神经网络</a>
-      <a href="./forest.html">随机森林</a>
-    </nav>
+  <body class="svm-page" data-lab="svm">
+    <nav class="lab-switch" aria-label="切换训练场"></nav>
     <main class="game-shell">
       <section class="stage" aria-label="支持向量机交互画布">
         <div class="topbar">
@@ -125,39 +115,11 @@
           </div>
         </section>
 
-        <section class="panel-block log-card" aria-label="训练记录">
-          <div class="panel-heading">
-            <h2>训练记录</h2>
-            <button id="expandLogBtn" class="mini-button" type="button" aria-haspopup="dialog">全屏</button>
-            <span id="bestLabel">等待开始</span>
-          </div>
-          <p id="emptyLog" class="empty-log">还没有训练。点一次“训练一轮”，这里会记录边界、支持向量和得分变化。</p>
-          <ol id="roundLog" class="round-log"></ol>
-        </section>
+        <section data-training-log data-initial-status="" data-empty-message="还没有训练。点一次“训练一轮”，这里会记录边界、支持向量和得分变化。"></section>
       </aside>
     </main>
 
-    <section id="logOverlay" class="log-overlay" role="dialog" aria-modal="true" aria-labelledby="logOverlayTitle" hidden>
-      <div class="log-modal">
-        <div class="modal-heading">
-          <div>
-            <p class="eyebrow">Training Log</p>
-            <h2 id="logOverlayTitle">训练记录</h2>
-          </div>
-          <button id="closeLogBtn" class="mini-button danger" type="button">关闭</button>
-        </div>
-        <div class="modal-stats">
-          <span id="modalRoundLabel">轮次 0</span>
-          <span id="modalBestLabel">最佳 --</span>
-          <span id="modalLevelLabel">关卡 --</span>
-        </div>
-        <p id="modalEmptyLog" class="empty-log">还没有训练记录。</p>
-        <ol id="fullRoundLog" class="full-round-log"></ol>
-      </div>
-    </section>
-
-    <script src="./models/svm-model.js?v=1"></script>
-    <script src="./lab-runtime.js?v=4"></script>
-    <script src="./svm.js?v=27"></script>
+    <script src="./core/lab-manifest.js"></script>
+    <script src="./core/bootstrap.js"></script>
   </body>
 </html>

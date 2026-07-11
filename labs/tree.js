@@ -1,35 +1,36 @@
-const canvas = document.querySelector("#chart");
-const ctx = canvas.getContext("2d");
 const runtime = window.LabRuntime;
+const $ = runtime.query;
+const canvas = $("#chart");
+const ctx = canvas.getContext("2d");
 const modelMath = window.TreeModel;
-const scoreValue = document.querySelector("#mseValue");
-const leafValue = document.querySelector("#roundValue");
-const progressFill = document.querySelector("#progressFill");
-const toast = document.querySelector("#toast");
-const latestText = document.querySelector("#latestText");
-const bestLabel = document.querySelector("#bestLabel");
-const targetLabel = document.querySelector("#targetLabel");
-const missionText = document.querySelector("#missionText");
-const levelSubtitle = document.querySelector("#levelSubtitle");
-const levelPicker = document.querySelector("#levelPicker");
-const viewPicker = document.querySelector("#viewPicker");
-const axisPicker = document.querySelector("#axisPicker");
-const threshold = document.querySelector("#threshold");
-const thresholdLabel = document.querySelector("#thresholdLabel");
-const maxDepth = document.querySelector("#maxDepth");
-const depthLabel = document.querySelector("#depthLabel");
-const stepBtn = document.querySelector("#stepBtn");
-const bestBtn = document.querySelector("#bestBtn");
-const undoBtn = document.querySelector("#undoBtn");
-const resetBtn = document.querySelector("#resetBtn");
-const nextLevelBtn = document.querySelector("#nextLevelBtn");
-const formulaLabel = document.querySelector("#formulaLabel");
-const accuracyLabel = document.querySelector("#accuracyLabel");
-const gainLabel = document.querySelector("#gainLabel");
-const leafLabel = document.querySelector("#leafLabel");
-const depthStatLabel = document.querySelector("#depthStatLabel");
-const impurityLabel = document.querySelector("#impurityLabel");
-const bestScoreLabel = document.querySelector("#bestScoreLabel");
+const scoreValue = $("#mseValue");
+const leafValue = $("#roundValue");
+const progressFill = $("#progressFill");
+const toast = $("#toast");
+const latestText = $("#latestText");
+const bestLabel = $("#bestLabel");
+const targetLabel = $("#targetLabel");
+const missionText = $("#missionText");
+const levelSubtitle = $("#levelSubtitle");
+const levelPicker = $("#levelPicker");
+const viewPicker = $("#viewPicker");
+const axisPicker = $("#axisPicker");
+const threshold = $("#threshold");
+const thresholdLabel = $("#thresholdLabel");
+const maxDepth = $("#maxDepth");
+const depthLabel = $("#depthLabel");
+const stepBtn = $("#stepBtn");
+const bestBtn = $("#bestBtn");
+const undoBtn = $("#undoBtn");
+const resetBtn = $("#resetBtn");
+const nextLevelBtn = $("#nextLevelBtn");
+const formulaLabel = $("#formulaLabel");
+const accuracyLabel = $("#accuracyLabel");
+const gainLabel = $("#gainLabel");
+const leafLabel = $("#leafLabel");
+const depthStatLabel = $("#depthStatLabel");
+const impurityLabel = $("#impurityLabel");
+const bestScoreLabel = $("#bestScoreLabel");
 
 const levels = [
   {
@@ -74,7 +75,9 @@ let state;
 let activeView = "regions";
 let splitAxis = "x";
 let nextLeafId = 1;
-const trainingLog = runtime.createTrainingLog();
+let controller;
+const history = runtime.createHistory();
+const plane = runtime.createCartesianPlane(canvas);
 
 function makePoints(level) {
   return level.points.map(([x, y, label], index) => ({ x, y, label, index }));
@@ -110,13 +113,13 @@ function treeMetrics() {
 
 function activeLeaf() {
   const maxAllowedDepth = Number(maxDepth.value);
-  return [...state.leaves]
-    .filter((leaf) => pointsInLeaf(leaf).length >= 2 && leaf.depth < maxAllowedDepth)
-    .sort((a, b) => {
-      const pa = pointsInLeaf(a);
-      const pb = pointsInLeaf(b);
-      return gini(pb) * pb.length - gini(pa) * pa.length;
-    })[0] || state.leaves[0];
+  return state.leaves
+    .map((leaf) => {
+      const points = pointsInLeaf(leaf);
+      return { leaf, count: points.length, priority: gini(points) * points.length };
+    })
+    .filter((candidate) => candidate.count >= 2 && candidate.leaf.depth < maxAllowedDepth)
+    .sort((left, right) => right.priority - left.priority)[0]?.leaf || state.leaves[0];
 }
 
 function splitGain(leaf, axis, value) {
@@ -130,10 +133,10 @@ function bestSplit(leaf = activeLeaf()) {
 function resetGame() {
   const level = levels[currentLevel];
   nextLeafId = 1;
+  history.clear();
   state = {
     points: makePoints(level),
     leaves: [rootLeaf()],
-    history: [],
     bestScore: 0,
     lastGain: 0,
   };
@@ -143,10 +146,9 @@ function resetGame() {
   levelSubtitle.textContent = level.name;
   toast.textContent = "点击画布或拖动阈值，给当前最混乱的叶子找一刀。";
   latestText.textContent = "未切分：整张地图只有一个叶子，预测全靠多数票。";
-  trainingLog.reset();
-  updatePickers();
+  controller.trainingLog.reset();
   updateAxisButtons();
-  draw();
+  controller.render();
   updateHud();
 }
 
@@ -163,7 +165,7 @@ function applySplit(useBest = false) {
     return;
   }
 
-  state.history.push({
+  history.push({
     leaves: state.leaves.map((item) => ({ ...item })),
     bestScore: state.bestScore,
     lastGain: state.lastGain,
@@ -187,9 +189,9 @@ function applySplit(useBest = false) {
   state.bestScore = Math.max(state.bestScore, result.score);
   toast.textContent = `切分叶子 #${leaf.id}：按 ${split.axis}=${split.value.toFixed(2)} 分裂，Gini 下降 ${split.gain.toFixed(3)}。`;
   latestText.textContent = `第 ${state.leaves.length - 1} 刀  叶子 ${state.leaves.length}  正确率 ${Math.round(result.accuracy * 100)}%  增益 ${split.gain.toFixed(3)}`;
-  trainingLog.add(latestText.textContent);
+  controller.trainingLog.add(latestText.textContent);
   updateAxisButtons();
-  draw();
+  controller.render();
   updateHud();
   if (result.score >= levels[currentLevel].target) {
     toast.textContent = `通关！分类得分 ${result.score.toFixed(2)}，用了 ${state.leaves.length} 个叶子。`;
@@ -198,7 +200,7 @@ function applySplit(useBest = false) {
 }
 
 function undo() {
-  const previous = state.history.pop();
+  const previous = history.pop();
   if (!previous) {
     toast.textContent = "还没有可以撤回的切分。";
     return;
@@ -208,8 +210,8 @@ function undo() {
   state.lastGain = previous.lastGain;
   nextLeafId = previous.nextLeafId;
   latestText.textContent = "撤回一刀，树回到上一版。";
-  trainingLog.removeLatest();
-  draw();
+  controller.trainingLog.removeLatest();
+  controller.render();
   updateHud();
 }
 
@@ -235,7 +237,6 @@ function updateHud() {
 
 function setView(view) {
   activeView = view;
-  runtime.setActiveSegment(viewPicker, view);
   const labels = {
     regions: "区域视图：每个矩形叶子用多数票决定预测颜色。",
     gain: "增益视图：候选切分线越能降低 Gini，不纯度下降越明显。",
@@ -244,42 +245,27 @@ function setView(view) {
   };
   toast.textContent = labels[view];
   runtime.setShapeContext(labels[view]);
-  draw();
+  controller.render();
 }
 
 function updateAxisButtons() {
   axisPicker.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.axis === splitAxis));
 }
 
-function updatePickers() {
-  runtime.renderChoicePicker(levelPicker, levels, currentLevel, (index) => {
-    currentLevel = index;
-    resetGame();
-  });
-}
-
-function nextLevel() {
-  currentLevel = (currentLevel + 1) % levels.length;
-  resetGame();
-}
-
-const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
-
 function chartBounds() {
-  const rect = canvas.getBoundingClientRect();
-  return { left: 4, top: 4, right: rect.width - 6, bottom: rect.height - 10, width: rect.width - 10, height: rect.height - 14 };
+  return plane.bounds();
 }
 
 function px(point, bounds) {
-  return bounds.left + ((point.x + 1) / 2) * bounds.width;
+  return plane.toX(point.x, bounds);
 }
 
 function py(point, bounds) {
-  return bounds.bottom - ((point.y + 1) / 2) * bounds.height;
+  return plane.toY(point.y, bounds);
 }
 
 function pointFromCanvas(x, y, bounds) {
-  return { x: ((x - bounds.left) / bounds.width) * 2 - 1, y: ((bounds.bottom - y) / bounds.height) * 2 - 1 };
+  return plane.fromCanvas(x, y, bounds);
 }
 
 function draw() {
@@ -298,30 +284,14 @@ function draw() {
 }
 
 function drawGrid(bounds) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(139,211,255,0.14)";
-  ctx.lineWidth = 2;
-  for (let i = 0; i <= 8; i += 1) {
-    const x = Math.round(bounds.left + (bounds.width / 8) * i) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(x, bounds.top);
-    ctx.lineTo(x, bounds.bottom);
-    ctx.stroke();
-  }
-  for (let i = 0; i <= 4; i += 1) {
-    const y = Math.round(bounds.top + (bounds.height / 4) * i) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(bounds.left, y);
-    ctx.lineTo(bounds.right, y);
-    ctx.stroke();
-  }
-  ctx.restore();
+  runtime.drawGrid(ctx, bounds);
 }
 
 function drawRegions(bounds) {
   ctx.save();
   ctx.fillStyle = "rgba(7,16,28,0.34)";
   ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
+  const activeLeafId = activeLeaf().id;
   state.leaves.forEach((leaf) => {
     const points = pointsInLeaf(leaf);
     const label = majority(points);
@@ -331,8 +301,8 @@ function drawRegions(bounds) {
     const height = ((leaf.yMax - leaf.yMin) / 2) * bounds.height;
     ctx.fillStyle = label === 1 ? "rgba(34,240,164,0.14)" : "rgba(59,215,255,0.14)";
     ctx.fillRect(x, y, width, height);
-    ctx.strokeStyle = leaf.id === activeLeaf().id ? "#ffd447" : "rgba(255,243,214,0.35)";
-    ctx.lineWidth = leaf.id === activeLeaf().id ? 4 : 2;
+    ctx.strokeStyle = leaf.id === activeLeafId ? "#ffd447" : "rgba(255,243,214,0.35)";
+    ctx.lineWidth = leaf.id === activeLeafId ? 4 : 2;
     ctx.strokeRect(x, y, width, height);
   });
   ctx.restore();
@@ -407,57 +377,75 @@ function drawTree(bounds) {
 }
 
 function drawAxes(bounds) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,243,214,0.56)";
-  ctx.fillStyle = "rgba(255,243,214,0.72)";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(bounds.left, bounds.top);
-  ctx.lineTo(bounds.left, bounds.bottom);
-  ctx.lineTo(bounds.right, bounds.bottom);
-  ctx.stroke();
-  ctx.font = "12px Courier New, Microsoft YaHei, monospace";
-  ctx.fillText("特征 x2", bounds.left + 10, bounds.top + 18);
-  ctx.textAlign = "right";
-  ctx.fillText("特征 x1", bounds.right - 8, bounds.bottom - 10);
-  ctx.restore();
+  runtime.drawAxes(ctx, bounds, { strokeColor: "rgba(255,243,214,0.56)" });
 }
 
-threshold.addEventListener("input", () => {
+function handleThreshold() {
   updateHud();
-  draw();
-});
-maxDepth.addEventListener("input", updateHud);
-axisPicker.addEventListener("click", (event) => {
+  controller.render();
+}
+
+function handleMaxDepth() {
+  updateHud();
+  controller.render();
+}
+
+function handleAxis(event) {
   const button = event.target.closest("button[data-axis]");
   if (!button) return;
   splitAxis = button.dataset.axis;
   updateAxisButtons();
   updateHud();
-  draw();
-});
-stepBtn.addEventListener("click", () => applySplit(false));
-bestBtn.addEventListener("click", () => {
+  controller.render();
+}
+
+function trainStep() {
+  applySplit(false);
+}
+
+function handleBest() {
   const split = bestSplit(activeLeaf());
   if (!Number.isFinite(split.gain)) return;
   splitAxis = split.axis;
   threshold.value = split.value;
   updateAxisButtons();
   applySplit(true);
-});
-undoBtn.addEventListener("click", undo);
-resetBtn.addEventListener("click", resetGame);
-nextLevelBtn.addEventListener("click", nextLevel);
-runtime.bindSegmentedPicker(viewPicker, setView);
-canvas.addEventListener("click", (event) => {
+}
+
+function handleCanvasClick(event) {
   const rect = canvas.getBoundingClientRect();
   const bounds = chartBounds();
   const point = pointFromCanvas(event.clientX - rect.left, event.clientY - rect.top, bounds);
   threshold.value = splitAxis === "x" ? point.x : point.y;
   thresholdLabel.textContent = Number(threshold.value).toFixed(2);
-  draw();
-});
-window.addEventListener("resize", fitCanvas);
+  controller.render();
+}
 
-resetGame();
-requestAnimationFrame(fitCanvas);
+controller = runtime.createLabController({
+  levels,
+  levelPicker,
+  viewPicker,
+  getLevelIndex: () => currentLevel,
+  setLevelIndex: (index) => { currentLevel = index; },
+  reset: resetGame,
+  draw,
+  canvas,
+  context: ctx,
+  setView,
+  actions: {
+    stepButton: stepBtn,
+    step: trainStep,
+    undoButton: undoBtn,
+    undo,
+    resetButton: resetBtn,
+    nextButton: nextLevelBtn,
+  },
+  bindings: [
+    { element: threshold, event: "input", handler: handleThreshold },
+    { element: maxDepth, event: "input", handler: handleMaxDepth },
+    { element: axisPicker, event: "click", handler: handleAxis },
+    { element: bestBtn, event: "click", handler: handleBest },
+    { element: canvas, event: "click", handler: handleCanvasClick },
+  ],
+});
+controller.start();

@@ -43,15 +43,22 @@ http://127.0.0.1:4173/index.html
 
 也可以直接部署到 GitHub Pages；仓库已有 `.github/workflows/pages.yml`。
 
-## 冒烟测试
+## 测试与性能基准
 
-项目包含一个轻量 fake DOM smoke 脚本，用来确认主要训练场可以完成通关流程：
+测试清单与页面加载清单共用 `core/lab-manifest.js`，不会再分别维护“页面 -> 模型 -> 主按钮 -> 关卡数”的映射。轻量 smoke 会确认全部关卡可以通关、纯模型计算保持确定；真实浏览器脚本会验证 Canvas、训练/撤销、日志弹层、主题、响应式和错误输出。
 
 ```bash
 npm run smoke
+npm run benchmark
 ```
 
-当前覆盖全部八个训练场，并单独验证 `models/` 下的纯模型计算模块。
+浏览器 QA 需要先运行 `npm run serve`，再执行：
+
+```bash
+npx --yes --package @playwright/cli playwright-cli -s=ml-arcade-qa open http://127.0.0.1:4173/gbm.html
+npx --yes --package @playwright/cli playwright-cli -s=ml-arcade-qa run-code --filename scripts/browser-qa.js
+npx --yes --package @playwright/cli playwright-cli -s=ml-arcade-qa run-code --filename scripts/performance-qa.js
+```
 
 ## 开发命令
 
@@ -60,6 +67,7 @@ npm run serve  # 启动本地静态服务器
 npm run check  # 检查全部 JavaScript 语法
 npm run visual:check # 检查八个训练场的可视化结构约定
 npm run smoke  # 运行纯模型与页面通关 smoke
+npm run benchmark # 运行树切分、森林、聚类和 SVM 热点基准
 npm test       # 完整检查
 ```
 
@@ -69,27 +77,28 @@ npm test       # 完整检查
 
 ```text
 .
-├── index.html             # 训练场大厅
-├── gbm.html / app.js      # GBM 梯度提升机
-├── svm.html / svm.js      # SVM
-├── kmeans.html / kmeans.js
-├── tree.html / tree.js
-├── linear.html / linear.js
-├── logistic.html / logistic.js
-├── nn.html / nn.js
-├── forest.html / forest.js
-├── models/                # 不依赖 DOM 的纯模型计算模块
-├── lab-runtime.js         # 无构建共享运行时
-├── styles.css             # 全站视觉系统
-└── scripts/smoke-labs.cjs # 冒烟测试
+├── index.html                 # 训练场大厅
+├── gbm.html ... forest.html   # 保留稳定 URL；只放本场语义内容
+├── core/
+│   ├── lab-manifest.js        # 页面、模型、脚本、导航和 smoke 的唯一清单
+│   ├── bootstrap.js           # 按清单并行获取、按序启动训练场
+│   └── lab-runtime.js         # 控制器、日志、历史、Canvas、字段缓存
+├── labs/                      # 每个训练场独有的状态、文案与绘制层
+│   ├── gbm.js
+│   └── ...
+├── models/
+│   ├── model-core.js          # 二分类统计与树切分共享数学核
+│   ├── gbm-model.js
+│   └── ...                    # 不依赖 DOM 的纯模型模块
+├── styles.css                 # 全站视觉系统
+└── scripts/                   # 契约、smoke、浏览器 QA 与 benchmark
 ```
 
 ## 新增训练场约定
 
-建议沿用现有文件节奏：
-
-1. HTML 使用 `nav + game-shell + stage + control-panel + canvas`。
-2. JS 按 `DOM 引用 -> levels 数据 -> state -> 模型计算 -> HUD/绘制 -> 事件绑定` 排列。
-3. 优先复用 `lab-runtime.js` 里的关卡选择、观察方式切换、自动训练、画布适配和 HUD 更新工具。
-4. 每个观察视图都应回答一个概念问题，例如“模型在哪里”“还错在哪里”“本轮学了什么”“损失是否下降”。
-5. 如果新增可通关模型，优先把它加入 `scripts/smoke-labs.cjs`。
+1. 在 `core/lab-manifest.js` 增加一条定义；导航、bootstrap 和 smoke 会同时获得它。
+2. 保留一个根目录 HTML 作为稳定 URL，公共导航写成空的 `.lab-switch` mount，日志写成 `data-training-log` mount。
+3. 纯算法放进 `models/<id>-model.js`；训练场交互与专属绘制放进 `labs/<id>.js`。
+4. 所有训练场必须通过 `LabRuntime.createLabController()` 装配关卡、视图、自动训练、撤销、重置、日志和 Canvas 生命周期，不能在页面脚本里再复制一套。
+5. 密集分类/聚类背景使用共享 `createFieldRenderer()`；坐标映射、网格和损失曲线使用共享 Canvas 工具。
+6. 每个观察视图都应回答一个概念问题，例如“模型在哪里”“还错在哪里”“本轮学了什么”“损失是否下降”。

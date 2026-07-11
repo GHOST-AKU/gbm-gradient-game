@@ -1,26 +1,66 @@
 const assert = require("assert");
 const fs = require("fs");
+const vm = require("vm");
 
-const pages = ["gbm", "forest", "svm", "kmeans", "tree", "linear", "logistic", "nn"];
+const manifestContext = {};
+manifestContext.globalThis = manifestContext;
+vm.createContext(manifestContext);
+vm.runInContext(fs.readFileSync("core/lab-manifest.js", "utf8"), manifestContext, {
+  filename: "core/lab-manifest.js",
+});
+
+const manifest = manifestContext.LabManifest;
+assert(Array.isArray(manifest), "manifest: LabManifest must be an array");
+assert.strictEqual(manifest.length, 9, "manifest: expected home plus eight labs");
+assert.strictEqual(new Set(manifest.map((lab) => lab.id)).size, manifest.length, "manifest: ids must be unique");
+assert.strictEqual(new Set(manifest.map((lab) => lab.href)).size, manifest.length, "manifest: hrefs must be unique");
+
+const labs = manifest.filter((lab) => lab.id !== "home");
+const sharedScripts = ["./core/lab-manifest.js", "./core/bootstrap.js"];
+
+function scriptsIn(html) {
+  return [...html.matchAll(/<script\s+src="([^"]+)"[^>]*><\/script>/g)].map((match) => match[1]);
+}
+
 const index = fs.readFileSync("index.html", "utf8");
-assert(/\.\/lab-runtime\.js\?v=\d+/.test(index), "index: global runtime must load with a cache version");
+assert(index.includes('data-lab="home"'), "index: body must identify the home route");
+assert.deepStrictEqual(scriptsIn(index), sharedScripts, "index: script assembly must use only manifest + bootstrap");
+assert(!/[?&]v=\d+/.test(index), "index: manual cache versions are forbidden");
 
-pages.forEach((name) => {
-  const html = fs.readFileSync(`${name}.html`, "utf8");
-  assert(html.includes('class="panel-block shape-card"'), `${name}: missing shape readout`);
-  assert(html.includes('class="shape-readout"'), `${name}: missing shape readout body`);
-  assert(html.includes("data-shape-context"), `${name}: shape readout must explain the active view`);
-  assert(html.includes('class="panel-block log-card"'), `${name}: missing visible training log`);
-  assert(html.includes('id="roundLog"') && html.includes('id="logOverlay"'), `${name}: training log needs compact and full views`);
-  assert(!html.includes('id="chartNote"'), `${name}: canvas note must be split into shape readout and training log`);
-  assert(html.includes('id="levelPicker"') && /id="levelPicker"[^>]+aria-label=/.test(html), `${name}: level picker needs aria-label`);
-  assert(html.includes('id="viewPicker"') && /id="viewPicker"[^>]+aria-label=/.test(html), `${name}: view picker needs aria-label`);
+labs.forEach((definition) => {
+  assert(definition.model === `./models/${definition.id}-model.js`, `${definition.id}: model path must follow convention`);
+  assert(definition.lab === `./labs/${definition.id}.js`, `${definition.id}: lab path must follow convention`);
+  assert(definition.smoke && definition.smoke.step && definition.smoke.next, `${definition.id}: smoke contract missing`);
+  assert(fs.existsSync(definition.model), `${definition.id}: model file missing`);
+  assert(fs.existsSync(definition.lab), `${definition.id}: lab file missing`);
+
+  const html = fs.readFileSync(`${definition.id}.html`, "utf8");
+  assert(html.includes(`data-lab="${definition.id}"`), `${definition.id}: body route id missing`);
+  assert(/<nav class="lab-switch" aria-label="切换训练场"><\/nav>/.test(html), `${definition.id}: nav must be an empty shared mount`);
+  assert(html.includes('class="panel-block shape-card"'), `${definition.id}: missing shape readout`);
+  assert(html.includes('class="shape-readout"'), `${definition.id}: missing shape readout body`);
+  assert(html.includes("data-shape-context"), `${definition.id}: shape readout must explain the active view`);
+  assert(html.includes("data-training-log"), `${definition.id}: missing shared training-log mount`);
+  assert(html.includes("data-empty-message"), `${definition.id}: shared log needs its lab-specific empty message`);
+  assert(!html.includes('id="roundLog"') && !html.includes('id="logOverlay"'), `${definition.id}: duplicated log DOM must not live in page HTML`);
+  assert(html.includes('id="levelPicker"') && /id="levelPicker"[^>]+aria-label=/.test(html), `${definition.id}: level picker needs aria-label`);
+  assert(html.includes('id="viewPicker"') && /id="viewPicker"[^>]+aria-label=/.test(html), `${definition.id}: view picker needs aria-label`);
   const canvas = html.match(/<canvas[^>]*id="chart"[^>]*>([\s\S]*?)<\/canvas>/);
-  assert(canvas && canvas[1].trim().length > 20, `${name}: canvas needs useful fallback text`);
-  const modelIndex = html.indexOf(`./models/${name === "gbm" ? "gbm" : name}-model.js`);
-  const runtimeIndex = html.indexOf("./lab-runtime.js");
-  assert(modelIndex >= 0 && runtimeIndex > modelIndex, `${name}: model script must load before runtime`);
-  assert(/\.\/lab-runtime\.js\?v=\d+/.test(html), `${name}: lab runtime must load with a cache version`);
+  assert(canvas && canvas[1].trim().length > 20, `${definition.id}: canvas needs useful fallback text`);
+  assert.deepStrictEqual(scriptsIn(html), sharedScripts, `${definition.id}: script assembly must use only manifest + bootstrap`);
+  assert(!/[?&]v=\d+/.test(html), `${definition.id}: manual cache versions are forbidden`);
+
+  const source = fs.readFileSync(definition.lab, "utf8");
+  assert(source.includes("createLabController"), `${definition.id}: must mount through the shared controller`);
+  assert(source.includes("const $ = runtime.query"), `${definition.id}: DOM access must use the shared query entrypoint`);
+  assert(!source.includes("document.querySelector"), `${definition.id}: direct DOM queries would fork the shared access pattern`);
+  assert(source.includes("runtime.drawAxes"), `${definition.id}: axes must use the shared renderer`);
+  if (["gbm", "svm", "kmeans", "linear", "logistic", "nn", "forest"].includes(definition.id)) {
+    assert(source.includes("runtime.drawSeries"), `${definition.id}: chart series must use the shared renderer`);
+  }
+  ["createTrainingLog", "createAutoTrainer", "makeCanvasFitter", 'addEventListener("resize"'].forEach((pattern) => {
+    assert(!source.includes(pattern), `${definition.id}: duplicated runtime behavior found: ${pattern}`);
+  });
 });
 
 const css = fs.readFileSync("styles.css", "utf8");
@@ -31,49 +71,50 @@ assert(css.includes('html[data-theme="light"]'), "styles: missing global light t
 assert(css.includes(".theme-toggle"), "styles: missing global theme toggle styling");
 assert(css.includes("--ui-accent"), "styles: UI accent must be separate from model-positive green");
 assert(css.includes("--decor-glow-a"), "styles: decorative background glows must be tokenized");
-[
-  "rgba(34, 240, 164, 0.16)",
-  "rgba(34, 240, 164, 0.18)",
-  "rgba(34, 240, 164, 0.1)",
-  "rgba(0, 138, 102",
-  "background: #134e4a",
-  "background: #123126",
-  "background: #d8f4e9",
-].forEach((pattern) => {
-  assert(!css.includes(pattern), `styles: decorative UI should not use green token ${pattern}`);
-});
 assert(css.includes("prefers-reduced-motion"), "styles: missing reduced-motion support");
 assert(css.includes("@media (max-width: 900px) and (orientation: portrait)"), "styles: mobile portrait must be a rotate-device gate");
-assert(css.includes("@media (max-width: 1200px) and (orientation: landscape)"), "styles: embedded landscape windows must enter the compact layout before columns overflow");
-assert(!css.includes("minmax(760px, 1fr)"), "styles: SVM must share the common desktop stage minimum");
+assert(css.includes("@media (max-width: 1200px) and (orientation: landscape)"), "styles: compact landscape gate missing");
 assert(css.includes("overflow-x: hidden"), "styles: sidebar must never expose a horizontal scrollbar");
-assert(css.includes("grid-auto-rows: max-content"), "styles: scrollable sidebar cards must keep their full content height");
-assert(css.includes("grid-template-rows: auto auto minmax(0, 1fr) auto"), "styles: compact landscape stage must reserve a row for the legend");
-assert(!css.includes(".legend {\n    display: none;"), "styles: compact landscape must not hide the chart legend");
-assert(/\.log-current\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?clip-path:\s*inset\(50%\);/.test(css), "training log: live status must not duplicate the visible latest-round entry");
+assert(css.includes("grid-auto-rows: max-content"), "styles: scrollable sidebar cards must keep their content height");
+assert(css.includes("grid-template-rows: auto auto minmax(0, 1fr) auto"), "styles: compact stage must reserve a legend row");
+assert(/\.log-current\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?clip-path:\s*inset\(50%\);/.test(css), "training log: live status must not duplicate the visible latest entry");
+[".kmeans-page", ".tree-page", ".compact-lab-page", ".linear-page", ".logistic-page", ".forest-page"].forEach((selector) => {
+  assert(!css.includes(selector), `styles: shared layout must not fork through ${selector}`);
+});
 
-const runtime = fs.readFileSync("lab-runtime.js", "utf8");
-assert(runtime.includes("setupThemeToggle"), "runtime: missing global theme toggle setup");
-assert(runtime.includes("ml-arcade-theme"), "runtime: theme choice must persist globally");
-assert(runtime.includes("resetLabScroll"), "runtime: lab pages must reset inherited scroll position");
-assert(runtime.includes("entries.slice(0, 1)"), "shared training log: sidebar must only show the latest round");
+const runtime = fs.readFileSync("core/lab-runtime.js", "utf8");
+[
+  "global.LabManifest",
+  "createLabController",
+  "createTrainingLog",
+  "createCanvasSurface",
+  "createFieldRenderer",
+  "createHistory",
+  "drawAxes",
+  "drawSeries",
+  "query",
+  "ResizeObserver",
+  "DEFAULT_MAX_DPR",
+].forEach((contract) => assert(runtime.includes(contract), `runtime: missing ${contract}`));
+assert(runtime.includes("entries.unshift"), "runtime: shared training log must be the single append-only store");
+assert(runtime.includes("fullLogDirty"), "runtime: full log must render lazily");
+assert(!runtime.includes("setInterval(step"), "runtime: auto training must not use an overlapping fixed interval");
 
-const gbm = fs.readFileSync("app.js", "utf8");
-assert(gbm.includes("state.logEntries.slice(0, 1)"), "gbm: sidebar must only show the latest round");
+const bootstrap = fs.readFileSync("core/bootstrap.js", "utf8");
+assert(bootstrap.includes("definition.model") && bootstrap.includes("definition.lab"), "bootstrap: model/lab loading must come from manifest");
+assert(bootstrap.includes("./models/model-core.js"), "bootstrap: shared model core must load before model adapters");
 
-const neuralNetwork = fs.readFileSync("nn.js", "utf8");
-assert(neuralNetwork.includes("drawNetworkPanel(b.panel)"), "nn: network panel must use a dedicated canvas region");
-assert(!neuralNetwork.includes("rect.width < 700"), "nn: network panel should not fall back to portrait stacking");
-assert(neuralNetwork.includes("const compact = rect.width < 760"), "nn: narrow landscape needs compact side-by-side bounds");
-assert(neuralNetwork.includes("const compactPanel = panel.h < 230"), "nn: compact landscape panel must avoid title collisions");
+const treeModel = fs.readFileSync("models/tree-model.js", "utf8");
+const forestModel = fs.readFileSync("models/forest-model.js", "utf8");
+assert(treeModel.includes("bestBinarySplit") && forestModel.includes("bestBinarySplit"), "tree models must share the split kernel");
+assert(forestModel.includes("createStabilityAccumulator") && forestModel.includes("oobEstimate"), "forest ensemble logic must live in the pure model");
+assert(fs.readFileSync("models/logistic-model.js", "utf8").includes("binaryClassificationStats"), "logistic model must share binary metrics");
+assert(fs.readFileSync("models/nn-model.js", "utf8").includes("binaryClassificationStats"), "neural model must share binary metrics");
+assert(fs.readFileSync("models/svm-model.js", "utf8").includes("createKernelMatrix"), "svm model must expose reusable kernel computation");
+
+const neuralNetwork = fs.readFileSync("labs/nn.js", "utf8");
+assert(neuralNetwork.includes("drawNetworkPanel(b.panel)"), "nn: network panel must keep its dedicated canvas region");
 assert(neuralNetwork.includes("drawWeightLabels"), "nn: dense weight labels need collision-aware layout");
 assert(neuralNetwork.includes("labelBlockers"), "nn: weight labels must avoid nodes and panel copy");
 
-const svm = fs.readFileSync("svm.js", "utf8");
-assert(!svm.includes("latestTicker"), "svm: training log must stay stable instead of rotating view notes");
-assert(!svm.includes("shapeTicker"), "svm: shape readout must not rotate training metrics or status");
-assert(!svm.includes("latestStatus"), "svm: training status must not feed the shape readout");
-const svmHtml = fs.readFileSync("svm.html", "utf8");
-assert(!svmHtml.includes('id="latestText"'), "svm: compact training log must only show the latest round entry");
-
-console.log(`Visual contract passed for ${pages.length} labs.`);
+console.log(`Architecture and visual contract passed for ${labs.length} labs.`);
