@@ -1,36 +1,29 @@
-const canvas = document.querySelector("#chart");
-const ctx = canvas.getContext("2d");
-const mseValue = document.querySelector("#mseValue");
-const roundValue = document.querySelector("#roundValue");
-const progressFill = document.querySelector("#progressFill");
-const toast = document.querySelector("#toast");
-const roundLog = document.querySelector("#roundLog");
-const logCard = document.querySelector(".log-card");
-const expandLogBtn = document.querySelector("#expandLogBtn");
-const logOverlay = document.querySelector("#logOverlay");
-const closeLogBtn = document.querySelector("#closeLogBtn");
-const fullRoundLog = document.querySelector("#fullRoundLog");
-const modalEmptyLog = document.querySelector("#modalEmptyLog");
-const modalRoundLabel = document.querySelector("#modalRoundLabel");
-const modalBestLabel = document.querySelector("#modalBestLabel");
-const modalLevelLabel = document.querySelector("#modalLevelLabel");
-const bestLabel = document.querySelector("#bestLabel");
-const targetLabel = document.querySelector("#targetLabel");
-const missionText = document.querySelector("#missionText");
-const levelSubtitle = document.querySelector("#levelSubtitle");
-const levelPicker = document.querySelector("#levelPicker");
-const viewPicker = document.querySelector("#viewPicker");
-const learningRate = document.querySelector("#learningRate");
-const treeDepth = document.querySelector("#treeDepth");
-const rateLabel = document.querySelector("#rateLabel");
-const depthLabel = document.querySelector("#depthLabel");
-const stepBtn = document.querySelector("#stepBtn");
-const autoBtn = document.querySelector("#autoBtn");
-const undoBtn = document.querySelector("#undoBtn");
-const resetBtn = document.querySelector("#resetBtn");
-const nextLevelBtn = document.querySelector("#nextLevelBtn");
 const runtime = window.LabRuntime;
+const $ = runtime.query;
+const canvas = $("#chart");
+const ctx = canvas.getContext("2d");
+const mseValue = $("#mseValue");
+const roundValue = $("#roundValue");
+const progressFill = $("#progressFill");
+const toast = $("#toast");
+const bestLabel = $("#bestLabel");
+const targetLabel = $("#targetLabel");
+const missionText = $("#missionText");
+const levelSubtitle = $("#levelSubtitle");
+const levelPicker = $("#levelPicker");
+const viewPicker = $("#viewPicker");
+const learningRate = $("#learningRate");
+const treeDepth = $("#treeDepth");
+const rateLabel = $("#rateLabel");
+const depthLabel = $("#depthLabel");
+const stepBtn = $("#stepBtn");
+const autoBtn = $("#autoBtn");
+const undoBtn = $("#undoBtn");
+const resetBtn = $("#resetBtn");
+const nextLevelBtn = $("#nextLevelBtn");
 const modelMath = window.GbmModel;
+const plane = runtime.createCartesianPlane(canvas, { xDomain: [0, 1], yDomain: [0, 1] });
+const history = runtime.createHistory();
 
 const levels = [
   {
@@ -136,13 +129,7 @@ let currentLevel = 0;
 let targetPoints = [];
 let state;
 let activeView = "model";
-const autoTrainer = runtime.createAutoTrainer({
-  button: autoBtn,
-  idleLabel: "自动训练",
-  activeLabel: "暂停自动",
-  intervalMs: 900,
-  step: trainStep,
-});
+let controller;
 
 function makePoints(level) {
   return level.points.map(([x, y]) => ({ x, y }));
@@ -154,14 +141,13 @@ function initialPrediction() {
 }
 
 function resetGame() {
-  stopAuto();
   const level = levels[currentLevel];
   targetPoints = makePoints(level);
   learningRate.value = level.defaultRate;
   treeDepth.value = level.defaultDepth;
+  history.clear();
   state = {
     predictions: initialPrediction(),
-    history: [],
     lastLearner: null,
     lastLearnerMeta: null,
     lastBefore: null,
@@ -169,19 +155,16 @@ function resetGame() {
     round: 0,
     bestMse: Number.POSITIVE_INFINITY,
     mseHistory: [],
-    logEntries: [],
     completedRound: null,
     overfit: 0,
     lastOverfitNoise: null,
   };
-  roundLog.innerHTML = "";
-  fullRoundLog.innerHTML = "";
-  logCard.classList.remove("has-logs");
+  state.initialMse = calcMse(state.predictions);
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "先看蓝线的平均猜测，再训练第一棵弱树追残差。平方误差下，残差就是负梯度方向。";
-  updatePickers();
-  draw();
+  controller.trainingLog.reset();
+  controller.render();
   updateHud();
 }
 
@@ -220,7 +203,7 @@ function trainStep() {
   );
   const after = calcMse(nextPredictions);
 
-  state.history.push({
+  history.push({
     predictions: [...state.predictions],
     lastLearner: state.lastLearner ? [...state.lastLearner] : null,
     lastLearnerMeta: state.lastLearnerMeta ? { leaves: state.lastLearnerMeta.leaves.map((leaf) => ({ ...leaf })) } : null,
@@ -228,8 +211,7 @@ function trainStep() {
     lastRate: state.lastRate,
     round: state.round,
     bestMse: state.bestMse,
-    mseHistory: [...state.mseHistory],
-    logEntries: [...state.logEntries],
+    mseHistoryLength: state.mseHistory.length,
     completedRound: state.completedRound,
     overfit: state.overfit,
     lastOverfitNoise: state.lastOverfitNoise ? [...state.lastOverfitNoise] : null,
@@ -252,27 +234,25 @@ function trainStep() {
   toast.textContent = `第 ${state.round} 轮：弱树按 ${segments} 段拟合残差，模型按学习率 ${rate.toFixed(
     2,
   )} 只走 ηh_m 这一步，误差下降 ${improvement.toFixed(4)}。`;
-  prependLog(`第 ${state.round} 棵树 | ${segments} 段叶子 | MSE ${before.toFixed(4)} 至 ${after.toFixed(4)}`);
+  controller.trainingLog.add(`第 ${state.round} 棵树 | ${segments} 段叶子 | MSE ${before.toFixed(4)} 至 ${after.toFixed(4)}`);
   if (shouldOverfit) {
     toast.textContent = `OVERFIT MODE：你把噪声也学进去了。学习率 ${rate.toFixed(2)} + ${segments} 段弱树让曲线开始乱抖。`;
-    if (roundLog.firstElementChild) {
-      roundLog.firstElementChild.textContent = `过拟合警报 | 第 ${state.round} 棵树 | 噪声抖动 | MSE ${before.toFixed(4)} 至 ${after.toFixed(4)}`;
-    }
+    controller.trainingLog.replaceLatest(`过拟合警报 | 第 ${state.round} 棵树 | 噪声抖动 | MSE ${before.toFixed(4)} 至 ${after.toFixed(4)}`);
   }
-  draw();
+  controller.render();
   updateHud();
 
   if (after <= levels[currentLevel].target && !shouldOverfit) {
     toast.textContent = `通关！这一关目标 MSE ${levels[currentLevel].target.toFixed(3)}，你用 ${state.completedRound} 棵弱树达成了。`;
-    stopAuto();
-  } else if (autoTrainer.isRunning() && state.round > 5 && improvement < 0.00001) {
+    controller.stopAuto();
+  } else if (controller.isAutoRunning() && state.round > 5 && improvement < 0.00001) {
     toast.textContent = "模型进入平台期：换观察方式看看卡在残差、弱树贡献，还是误差下降曲线。";
-    stopAuto();
+    controller.stopAuto();
   }
 }
 
 function undoStep() {
-  const previous = state.history.pop();
+  const previous = history.pop();
   if (!previous) {
     toast.textContent = "还没有可以撤回的训练轮次。";
     return;
@@ -284,63 +264,14 @@ function undoStep() {
   state.lastRate = previous.lastRate;
   state.round = previous.round;
   state.bestMse = previous.bestMse;
-  state.mseHistory = previous.mseHistory;
-  state.logEntries = previous.logEntries;
+  state.mseHistory.length = previous.mseHistoryLength;
   state.completedRound = previous.completedRound;
   state.overfit = previous.overfit;
   state.lastOverfitNoise = previous.lastOverfitNoise;
-  renderLogLists();
+  controller.trainingLog.removeLatest();
   toast.textContent = "撤回上一棵弱学习器，回到上一轮模型。";
-  draw();
+  controller.render();
   updateHud();
-}
-
-function prependLog(message) {
-  state.logEntries.unshift(message);
-  renderLogLists();
-}
-
-function renderLogLists() {
-  const hasLogs = state.logEntries.length > 0;
-  logCard.classList.toggle("has-logs", hasLogs);
-  roundLog.innerHTML = "";
-  fullRoundLog.innerHTML = "";
-
-  state.logEntries.slice(0, 1).forEach((message) => {
-    const item = document.createElement("li");
-    item.textContent = message;
-    roundLog.append(item);
-  });
-
-  state.logEntries.forEach((message) => {
-    const item = document.createElement("li");
-    item.textContent = message;
-    fullRoundLog.append(item);
-  });
-
-  modalEmptyLog.hidden = hasLogs;
-  fullRoundLog.hidden = !hasLogs;
-}
-
-function updateLogModalStats() {
-  const level = levels[currentLevel];
-  modalRoundLabel.textContent = `轮次 ${state.round}`;
-  modalBestLabel.textContent = state.round ? `最佳 MSE ${state.bestMse.toFixed(4)}` : "最佳 --";
-  modalLevelLabel.textContent = `关卡 ${level.shortName} / 目标 ${level.target.toFixed(3)}`;
-}
-
-function openLogModal() {
-  renderLogLists();
-  updateLogModalStats();
-  logOverlay.hidden = false;
-  document.body.classList.add("modal-open");
-  closeLogBtn.focus();
-}
-
-function closeLogModal() {
-  logOverlay.hidden = true;
-  document.body.classList.remove("modal-open");
-  expandLogBtn.focus();
 }
 
 function updateHud() {
@@ -351,31 +282,16 @@ function updateHud() {
   runtime.setText(roundValue, state.round);
   runtime.setText(bestLabel, state.round ? `最佳 ${state.bestMse.toFixed(4)}` : "等待开始");
   runtime.setText(targetLabel, `目标 ${level.target.toFixed(3)}`);
-  const initial = state.history[0] ? calcMse(state.history[0].predictions) : calcMse(initialPrediction());
+  const initial = state.initialMse;
   const score = Math.max(0, Math.min(1, (initial - mse) / Math.max(initial - level.target, 0.0001)));
   runtime.setProgress(progressFill, score);
   runtime.setText(rateLabel, Number(learningRate.value).toFixed(2));
   runtime.setText(depthLabel, `${treeDepth.value} 段`);
   document.body.classList.toggle("overfit-mode", state.overfit > 0.15);
-  if (!logOverlay.hidden) updateLogModalStats();
-}
-
-function stopAuto() {
-  autoTrainer.stop();
-}
-
-function toggleAuto() {
-  autoTrainer.toggle();
-}
-
-function nextLevel() {
-  currentLevel = (currentLevel + 1) % levels.length;
-  resetGame();
 }
 
 function setView(view) {
   activeView = view;
-  runtime.setActiveSegment(viewPicker, view);
   const labels = {
     model: "模型视图：灰线是旧模型，绿色是全量弱树，黄色是学习率缩放后的实际步长，蓝线是新模型。",
     residual: "残差视图：看每个样本还剩多少没有解释；平方误差下，残差就是这轮要追的负梯度。",
@@ -384,41 +300,19 @@ function setView(view) {
   };
   toast.textContent = labels[view];
   runtime.setShapeContext(labels[view]);
-  draw();
+  controller.render();
 }
-
-function updatePickers() {
-  runtime.renderChoicePicker(levelPicker, levels, currentLevel, (index) => {
-    currentLevel = index;
-    resetGame();
-  });
-}
-
-const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
 
 function chartBounds() {
-  const rect = canvas.getBoundingClientRect();
-  const left = 4;
-  const right = rect.width - 6;
-  const top = 4;
-  const bottom = rect.height - 10;
-
-  return {
-    left,
-    right,
-    top,
-    bottom,
-    width: right - left,
-    height: bottom - top,
-  };
+  return plane.bounds();
 }
 
 function px(point, bounds) {
-  return bounds.left + point.x * bounds.width;
+  return plane.toX(point.x, bounds);
 }
 
 function py(value, bounds) {
-  return bounds.bottom - value * bounds.height;
+  return plane.toY(value, bounds);
 }
 
 function draw() {
@@ -441,46 +335,14 @@ function drawBackdrop(rect, bounds) {
 }
 
 function drawGrid(bounds) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(139,211,255,0.14)";
-  ctx.lineWidth = 2;
-  for (let i = 0; i <= 4; i += 1) {
-    const y = Math.round(bounds.top + (bounds.height / 4) * i) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(bounds.left, y);
-    ctx.lineTo(bounds.right, y);
-    ctx.stroke();
-  }
-  for (let i = 0; i <= 8; i += 1) {
-    const x = Math.round(bounds.left + (bounds.width / 8) * i) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(x, bounds.top);
-    ctx.lineTo(x, bounds.bottom);
-    ctx.stroke();
-  }
-  ctx.restore();
+  runtime.drawGrid(ctx, bounds);
 }
 
 function drawAxes(bounds, view) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,243,214,0.58)";
-  ctx.fillStyle = "rgba(255,243,214,0.72)";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(bounds.left, bounds.top);
-  ctx.lineTo(bounds.left, bounds.bottom);
-  ctx.lineTo(bounds.right, bounds.bottom);
-  ctx.stroke();
-  ctx.font = "12px Courier New, Microsoft YaHei, monospace";
-  ctx.fillText(
-    view === "loss" ? "均方误差" : view === "residual" ? "残差" : "预测 / 真实值",
-    bounds.left + 10,
-    bounds.top + 18,
-  );
-  ctx.textAlign = "right";
-  ctx.fillText(view === "loss" ? "训练轮次" : "特征 x", bounds.right - 8, bounds.bottom - 10);
-  ctx.textAlign = "left";
-  ctx.restore();
+  runtime.drawAxes(ctx, bounds, {
+    xLabel: view === "loss" ? "训练轮次" : "特征 x",
+    yLabel: view === "loss" ? "均方误差" : view === "residual" ? "残差" : "预测 / 真实值",
+  });
 }
 
 function drawModelPanel(bounds) {
@@ -592,32 +454,16 @@ function drawLoss(bounds) {
   const values = state.mseHistory.length ? state.mseHistory : [calcMse()];
   const max = Math.max(...values, calcMse(initialPrediction()), levels[currentLevel].target * 1.8);
   const min = Math.min(levels[currentLevel].target * 0.65, ...values);
-  const toX = (index) => bounds.left + (values.length <= 1 ? 0 : (index / (values.length - 1)) * bounds.width);
-  const toY = (value) => bounds.bottom - ((value - min) / Math.max(max - min, 0.0001)) * bounds.height;
   ctx.save();
-  const targetY = toY(levels[currentLevel].target);
-  ctx.strokeStyle = "rgba(255,212,71,0.85)";
-  ctx.setLineDash([8, 6]);
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(bounds.left, targetY);
-  ctx.lineTo(bounds.right, targetY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.strokeStyle = "#3bd7ff";
-  ctx.lineWidth = 5;
-  ctx.lineJoin = "miter";
-  ctx.beginPath();
-  values.forEach((value, index) => {
-    const x = toX(index);
-    const y = toY(value);
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-  values.forEach((value, index) => {
-    ctx.fillStyle = "#3bd7ff";
-    ctx.fillRect(toX(index) - 4, toY(value) - 4, 8, 8);
+  runtime.drawSeries(ctx, values, bounds, {
+    min,
+    max,
+    color: "#3bd7ff",
+    lineWidth: 5,
+    lineJoin: "miter",
+    pointColor: "#3bd7ff",
+    pointSize: 8,
+    guides: [{ value: levels[currentLevel].target, dash: [8, 6] }],
   });
   drawPanelTitle(bounds, `虚线是本关通关线：MSE ${levels[currentLevel].target.toFixed(3)}`);
   ctx.restore();
@@ -736,23 +582,29 @@ function drawLearner(bounds, scaled) {
   drawPrediction(bounds, shifted, scaled ? "rgba(255,212,71,0.92)" : "rgba(34,240,164,0.58)", scaled ? 3 : 2, false);
 }
 
-learningRate.addEventListener("input", updateHud);
-treeDepth.addEventListener("input", updateHud);
-stepBtn.addEventListener("click", trainStep);
-autoBtn.addEventListener("click", toggleAuto);
-undoBtn.addEventListener("click", undoStep);
-resetBtn.addEventListener("click", resetGame);
-nextLevelBtn.addEventListener("click", nextLevel);
-expandLogBtn.addEventListener("click", openLogModal);
-closeLogBtn.addEventListener("click", closeLogModal);
-logOverlay.addEventListener("click", (event) => {
-  if (event.target === logOverlay) closeLogModal();
+controller = runtime.createLabController({
+  levels,
+  getLevelIndex: () => currentLevel,
+  setLevelIndex: (index) => { currentLevel = index; },
+  reset: resetGame,
+  draw,
+  canvas,
+  context: ctx,
+  levelPicker,
+  viewPicker,
+  setView,
+  auto: { button: autoBtn, idleLabel: "自动训练", activeLabel: "暂停自动", intervalMs: 900, step: trainStep },
+  actions: {
+    step: trainStep,
+    stepButton: stepBtn,
+    undo: undoStep,
+    undoButton: undoBtn,
+    resetButton: resetBtn,
+    nextButton: nextLevelBtn,
+  },
+  inputs: [
+    { element: learningRate, handler: updateHud },
+    { element: treeDepth, handler: updateHud },
+  ],
 });
-window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !logOverlay.hidden) closeLogModal();
-});
-runtime.bindSegmentedPicker(viewPicker, setView);
-window.addEventListener("resize", fitCanvas);
-
-resetGame();
-requestAnimationFrame(fitCanvas);
+controller.start();

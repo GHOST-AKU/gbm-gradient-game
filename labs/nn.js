@@ -1,8 +1,9 @@
-const $ = (selector) => document.querySelector(selector);
+const runtime = window.LabRuntime;
+const $ = runtime.query;
 const canvas = $("#chart");
 const ctx = canvas.getContext("2d");
-const runtime = window.LabRuntime;
 const modelMath = window.NeuralNetworkModel;
+const modelCore = window.ModelCore;
 const scoreValue = $("#scoreValue");
 const roundValue = $("#roundValue");
 const progressFill = $("#progressFill");
@@ -39,17 +40,14 @@ const levels = [
 let levelIndex = 0;
 let state;
 let view = "weights";
-const trainingLog = runtime.createTrainingLog();
-const autoTrainer = runtime.createAutoTrainer({
-  button: autoBtn,
-  idleLabel: "自动训练",
-  activeLabel: "暂停自动",
-  intervalMs: 650,
-  step: trainStep,
-});
+let controller;
+let modelVersion = 0;
+const history = runtime.createHistory();
+const plane = runtime.createCartesianPlane(canvas);
+const fieldRenderer = runtime.createFieldRenderer(ctx);
 
 function sigmoid(x) { return modelMath.sigmoid(x); }
-function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+function clamp(value, min, max) { return modelCore.clamp(value, min, max); }
 function makeNet() {
   return modelMath.makeNet();
 }
@@ -67,16 +65,16 @@ function hardestPointIndex() {
 }
 
 function resetGame() {
-  stopAuto();
   const level = levels[levelIndex];
-  state = { points: level.points.map(([x, y, label]) => ({ x, y, label })), net: makeNet(), round: 0, best: 0, history: [], lossHistory: [], signalPointIndex: 0 };
+  state = { points: level.points.map(([x, y, label]) => ({ x, y, label })), net: makeNet(), round: 0, best: 0, lossHistory: [], signalPointIndex: 0 };
+  modelVersion += 1;
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "每批训练会先前向计算概率，再把误差反向传回隐藏层。";
   latestText.textContent = "未训练：隐藏层还没有形成有效特征。";
-  trainingLog.reset();
-  renderPickers();
-  draw();
+  history.clear();
+  controller.trainingLog.reset();
+  controller.render();
   updateHud();
 }
 
@@ -85,9 +83,10 @@ function cloneNet(net) {
 }
 
 function trainStep() {
-  state.history.push({ net: cloneNet(state.net), round: state.round, best: state.best, lossHistory: [...state.lossHistory], signalPointIndex: state.signalPointIndex });
+  history.push({ net: cloneNet(state.net), round: state.round, best: state.best });
   const lr = Number(learningRate.value);
   state.net = modelMath.train(state.points, state.net, lr, Number(epochsPerStep.value));
+  modelVersion += 1;
   state.round += 1;
   const result = metrics();
   state.signalPointIndex = hardestPointIndex();
@@ -95,18 +94,18 @@ function trainStep() {
   state.lossHistory.push(result.loss);
   toast.textContent = `第 ${state.round} 批：误差反向修正权重，损失 ${result.loss.toFixed(3)}。`;
   latestText.textContent = `第 ${state.round} 批  正确率 ${Math.round(result.accuracy * 100)}%  损失 ${result.loss.toFixed(3)}  得分 ${result.score.toFixed(2)}`;
-  trainingLog.add(latestText.textContent);
-  draw();
+  controller.trainingLog.add(latestText.textContent);
+  controller.render();
   updateHud();
   if (result.score >= levels[levelIndex].target) {
     toast.textContent = `通关！网络已经学出非线性边界，得分 ${result.score.toFixed(2)}。`;
     latestText.textContent = toast.textContent;
-    stopAuto();
+    controller.stopAuto();
   }
 }
 
 function undo() {
-  const previous = state.history.pop();
+  const previous = history.pop();
   if (!previous) {
     toast.textContent = "还没有可以撤回的训练批次。";
     return;
@@ -114,11 +113,12 @@ function undo() {
   state.net = previous.net;
   state.round = previous.round;
   state.best = previous.best;
-  state.lossHistory = previous.lossHistory;
-  state.signalPointIndex = previous.signalPointIndex || 0;
+  state.lossHistory.pop();
+  state.signalPointIndex = state.round ? hardestPointIndex() : 0;
+  modelVersion += 1;
   latestText.textContent = state.round ? `已撤回到第 ${state.round} 批。` : "未训练：隐藏层还没有形成有效特征。";
-  trainingLog.removeLatest();
-  draw();
+  controller.trainingLog.removeLatest();
+  controller.render();
   updateHud();
 }
 
@@ -141,26 +141,13 @@ function updateHud() {
   bestScoreLabel.textContent = state.best.toFixed(2);
 }
 
-function stopAuto() { autoTrainer.stop(); }
-function toggleAuto() { autoTrainer.toggle(); }
-
-function renderPickers() {
-  runtime.renderChoicePicker(levelPicker, levels, levelIndex, (index) => {
-    levelIndex = index;
-    resetGame();
-  });
-}
-
 function setView(next) {
   view = next;
-  runtime.setActiveSegment(viewPicker, view);
   const text = { field: "边界视图：背景显示网络输出概率。", neurons: "神经元视图：亮线展示隐藏单元各自学到的切分方向。", loss: "损失视图：曲线下降说明反向传播有效。", weights: "网络视图：2 个输入、4 个隐藏神经元、1 个输出，线宽表示权重，红色脉冲表示反向误差。" }[view];
-  toast.textContent = text; runtime.setShapeContext(text); draw();
+  toast.textContent = text; runtime.setShapeContext(text);
 }
 
-const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw, { minWidth: 1, minHeight: 1 });
-
-function bounds() {
+function layout() {
   const rect = canvas.getBoundingClientRect();
   const compact = rect.width < 760;
   const panelWidth = compact
@@ -170,27 +157,19 @@ function bounds() {
   const minPlotWidth = compact ? Math.max(190, rect.width * 0.48) : 340;
   const plotRight = Math.max(minPlotWidth, rect.width - panelWidth - gap);
   return {
-    left: 4,
-    top: 4,
-    right: plotRight - 6,
-    bottom: rect.height - 10,
-    width: plotRight - 10,
-    height: rect.height - 14,
+    ...plane.bounds({ width: plotRight, height: rect.height }),
     panel: { x: plotRight + gap, y: 4, w: rect.width - plotRight - gap - 6, h: rect.height - 14 },
   };
 }
-function px(x, b) { return b.left + ((x + 1) / 2) * b.width; }
-function py(y, b) { return b.bottom - ((y + 1) / 2) * b.height; }
-function pointAt(x, y, b) { return { x: ((x - b.left) / b.width) * 2 - 1, y: ((b.bottom - y) / b.height) * 2 - 1 }; }
 
 function draw() {
   if (!state) return;
-  const b = bounds();
+  const b = layout();
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
   if (view === "loss") drawLoss(b);
   else {
     drawField(b);
-    drawGrid(b);
+    runtime.drawGrid(ctx, b);
     if (view === "neurons") drawNeuronLines(b);
     drawPoints(b);
   }
@@ -199,21 +178,20 @@ function draw() {
 }
 
 function drawField(b) {
-  const cols = 44, rows = 28, cellW = b.width / cols, cellH = b.height / rows;
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const p = forward(pointAt(b.left + col * cellW + cellW / 2, b.top + row * cellH + cellH / 2, b)).p;
-      ctx.fillStyle = p >= 0.5 ? `rgba(34,240,164,${0.08 + p * 0.2})` : `rgba(59,215,255,${0.08 + (1 - p) * 0.2})`;
-      ctx.fillRect(b.left + col * cellW, b.top + row * cellH, Math.ceil(cellW), Math.ceil(cellH));
-      if (Math.abs(p - 0.5) < 0.035) { ctx.fillStyle = "#fff3d6"; ctx.fillRect(b.left + col * cellW, b.top + row * cellH, Math.ceil(cellW), Math.ceil(cellH)); }
-    }
-  }
-}
-
-function drawGrid(b) {
-  ctx.strokeStyle = "rgba(139,211,255,0.14)"; ctx.lineWidth = 2;
-  for (let i = 0; i <= 8; i += 1) { const x = Math.round(b.left + (b.width / 8) * i) + 0.5; ctx.beginPath(); ctx.moveTo(x, b.top); ctx.lineTo(x, b.bottom); ctx.stroke(); }
-  for (let i = 0; i <= 4; i += 1) { const y = Math.round(b.top + (b.height / 4) * i) + 0.5; ctx.beginPath(); ctx.moveTo(b.left, y); ctx.lineTo(b.right, y); ctx.stroke(); }
+  fieldRenderer.draw({
+    key: `${levelIndex}:${state.round}:${modelVersion}`,
+    colorKey: "probability-boundary",
+    bounds: b,
+    columns: 44,
+    rows: 28,
+    sample: (unitX, unitY) => modelMath.probability(plane.fromUnit(unitX, unitY), state.net),
+    color: (value) => {
+      if (Math.abs(value - 0.5) < 0.035) return [255, 243, 214, 255];
+      return value >= 0.5
+        ? [34, 240, 164, Math.round((0.08 + value * 0.2) * 255)]
+        : [59, 215, 255, Math.round((0.08 + (1 - value) * 0.2) * 255)];
+    },
+  });
 }
 
 function drawNeuronLines(b) {
@@ -224,9 +202,9 @@ function drawNeuronLines(b) {
     ctx.strokeStyle = unit.v >= 0 ? "#22f0a4" : "#ffd447";
     ctx.globalAlpha = view === "weights" ? Math.min(1, Math.abs(unit.v)) : 0.7;
     ctx.lineWidth = 3 + Math.min(5, Math.abs(unit.v) * 3);
-    ctx.beginPath(); ctx.moveTo(px(-1, b), py(y1, b)); ctx.lineTo(px(1, b), py(y2, b)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(plane.toX(-1, b), plane.toY(y1, b)); ctx.lineTo(plane.toX(1, b), plane.toY(y2, b)); ctx.stroke();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = "#fff3d6"; ctx.fillText(`H${index + 1}`, px(-0.96, b), py(y1, b));
+    ctx.fillStyle = "#fff3d6"; ctx.fillText(`H${index + 1}`, plane.toX(-0.96, b), plane.toY(y1, b));
   });
 }
 
@@ -237,16 +215,14 @@ function drawPoints(b) {
     ctx.fillStyle = point.label ? "#22f0a4" : "#3bd7ff";
     ctx.strokeStyle = wrong ? "#ff5f57" : "#05060c";
     ctx.lineWidth = wrong ? 5 : 4;
-    const x = px(point.x, b), y = py(point.y, b);
+    const x = plane.toX(point.x, b), y = plane.toY(point.y, b);
     if (point.label) { ctx.fillRect(x - 7, y - 7, 14, 14); ctx.strokeRect(x - 7, y - 7, 14, 14); }
     else { ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4); ctx.fillRect(-7, -7, 14, 14); ctx.strokeRect(-7, -7, 14, 14); ctx.restore(); }
   });
 }
 
 function drawAxes(b) {
-  ctx.strokeStyle = "rgba(255,243,214,0.58)"; ctx.fillStyle = "rgba(255,243,214,0.72)"; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(b.left, b.top); ctx.lineTo(b.left, b.bottom); ctx.lineTo(b.right, b.bottom); ctx.stroke();
-  ctx.font = "12px Courier New, Microsoft YaHei, monospace"; ctx.fillText("特征 x2", b.left + 10, b.top + 18); ctx.textAlign = "right"; ctx.fillText("特征 x1", b.right - 8, b.bottom - 10); ctx.textAlign = "left";
+  runtime.drawAxes(ctx, b);
 }
 
 function drawNetworkPanel(panel) {
@@ -479,22 +455,36 @@ function signed(value) {
 }
 
 function drawLoss(b) {
-  drawField(b); drawGrid(b);
+  drawField(b); runtime.drawGrid(ctx, b);
   const values = state.lossHistory.length ? state.lossHistory : [metrics().loss];
   const max = Math.max(...values, 0.8);
-  ctx.strokeStyle = "#22f0a4"; ctx.lineWidth = 5; ctx.beginPath();
-  values.forEach((value, index) => { const x = b.left + (index / Math.max(1, values.length - 1)) * b.width; const y = b.bottom - (1 - value / max) * b.height; if (index === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
-  ctx.stroke();
+  runtime.drawSeries(ctx, values, b, { min: 0, max, color: "#22f0a4", lineWidth: 5 });
 }
 
-learningRate.addEventListener("input", updateHud);
-epochsPerStep.addEventListener("input", updateHud);
-stepBtn.addEventListener("click", trainStep);
-autoBtn.addEventListener("click", toggleAuto);
-undoBtn.addEventListener("click", undo);
-resetBtn.addEventListener("click", resetGame);
-nextLevelBtn.addEventListener("click", () => { levelIndex = (levelIndex + 1) % levels.length; resetGame(); });
-runtime.bindSegmentedPicker(viewPicker, setView);
-window.addEventListener("resize", fitCanvas);
-resetGame();
-requestAnimationFrame(fitCanvas);
+controller = runtime.createLabController({
+  levels,
+  levelPicker,
+  viewPicker,
+  getLevelIndex: () => levelIndex,
+  setLevelIndex: (index) => { levelIndex = index; },
+  reset: resetGame,
+  draw,
+  canvas,
+  context: ctx,
+  setView,
+  auto: { button: autoBtn, idleLabel: "自动训练", activeLabel: "暂停自动", intervalMs: 650, step: trainStep },
+  actions: {
+    stepButton: stepBtn,
+    step: trainStep,
+    undoButton: undoBtn,
+    undo,
+    resetButton: resetBtn,
+    nextButton: nextLevelBtn,
+  },
+  inputs: [
+    { element: learningRate, handler: updateHud },
+    { element: epochsPerStep, handler: updateHud },
+  ],
+  canvasOptions: { minWidth: 1, minHeight: 1 },
+});
+controller.start();

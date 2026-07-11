@@ -2,17 +2,23 @@ const fs = require("fs");
 const vm = require("vm");
 
 function makeCtx() {
-  return new Proxy({}, { get: (target, prop) => (prop in target ? target[prop] : () => {}) });
+  return new Proxy({
+    createImageData(width, height) {
+      return { data: new Uint8ClampedArray(width * height * 4) };
+    },
+    drawImage() {},
+    putImageData() {},
+  }, { get: (target, property) => (property in target ? target[property] : () => {}) });
 }
 
-function makeEl(selector) {
+function makeElement(selector) {
   return {
     selector,
     style: {},
     dataset: {},
     className: "",
     hidden: false,
-    classList: { toggle() {}, add() {}, remove() {} },
+    classList: { contains() { return false; }, toggle() {}, add() {}, remove() {} },
     textContent: "",
     innerHTML: "",
     value: "",
@@ -22,10 +28,12 @@ function makeEl(selector) {
     append() {},
     prepend() {},
     focus() {},
+    setAttribute() {},
     setPointerCapture() {},
     addEventListener(type, handler) {
       this.listeners[type] = handler;
     },
+    removeEventListener() {},
     getBoundingClientRect() {
       return { width: 900, height: 430, left: 0, top: 0 };
     },
@@ -33,7 +41,7 @@ function makeEl(selector) {
       return makeCtx();
     },
     querySelector() {
-      return makeEl(`${selector} child`);
+      return makeElement(`${selector} child`);
     },
     querySelectorAll() {
       return [];
@@ -41,64 +49,68 @@ function makeEl(selector) {
   };
 }
 
-function run(file, options) {
-  const els = new Map();
-  function el(selector) {
-    if (!els.has(selector)) els.set(selector, makeEl(selector));
-    return els.get(selector);
+function evaluate(file, context) {
+  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+}
+
+function loadManifest() {
+  const context = { globalThis: null };
+  context.globalThis = context;
+  vm.createContext(context);
+  evaluate("core/lab-manifest.js", context);
+  return context.LabManifest;
+}
+
+function run(definition) {
+  const elements = new Map();
+  function element(selector) {
+    if (!elements.has(selector)) elements.set(selector, makeElement(selector));
+    return elements.get(selector);
   }
 
-  Object.entries(options.values || {}).forEach(([selector, value]) => {
-    el(selector).value = value;
+  Object.entries(definition.smoke.values || {}).forEach(([selector, value]) => {
+    element(selector).value = value;
   });
 
   const context = {
     console,
     setInterval() { return 1; },
     clearInterval() {},
-    window: { addEventListener() {}, devicePixelRatio: 1 },
+    window: { addEventListener() {}, removeEventListener() {}, devicePixelRatio: 1 },
     document: {
       body: { classList: { add() {}, remove() {}, toggle() {} } },
-      querySelector: el,
+      querySelector: element,
       querySelectorAll() { return []; },
-      createElement(tagName) { return makeEl(tagName); },
+      createElement(tagName) { return makeElement(tagName); },
     },
     Math,
     Date,
-    requestAnimationFrame(fn) { if (typeof fn === "function") fn(); },
+    requestAnimationFrame(callback) {
+      if (typeof callback === "function") callback();
+      return 1;
+    },
     cancelAnimationFrame() {},
   };
-
   vm.createContext(context);
-  const modelFiles = {
-    "app.js": "models/gbm-model.js",
-    "forest.js": "models/forest-model.js",
-    "kmeans.js": "models/kmeans-model.js",
-    "linear.js": "models/linear-model.js",
-    "logistic.js": "models/logistic-model.js",
-    "nn.js": "models/nn-model.js",
-    "svm.js": "models/svm-model.js",
-    "tree.js": "models/tree-model.js",
-  };
-  if (modelFiles[file]) {
-    vm.runInContext(fs.readFileSync(modelFiles[file], "utf8"), context, { filename: modelFiles[file] });
-  }
-  if (fs.existsSync("lab-runtime.js")) {
-    vm.runInContext(fs.readFileSync("lab-runtime.js", "utf8"), context, { filename: "lab-runtime.js" });
-  }
-  vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  evaluate("core/lab-manifest.js", context);
+  evaluate("models/model-core.js", context);
+  evaluate(definition.model.replace(/^\.\//, ""), context);
+  evaluate("core/lab-runtime.js", context);
+  evaluate(definition.lab.replace(/^\.\//, ""), context);
 
   const results = [];
-  for (let level = 0; level < options.levels; level += 1) {
+  for (let level = 0; level < definition.smoke.levels; level += 1) {
     let cleared = false;
-    for (let step = 0; step < options.maxSteps; step += 1) {
-      el(options.step).listeners.click();
-      const message = el("#toast").textContent || "";
+    for (let step = 0; step < definition.smoke.maxSteps; step += 1) {
+      const handler = element(definition.smoke.step).listeners.click;
+      if (typeof handler !== "function") throw new Error(`${definition.id}: primary action is not bound`);
+      handler();
+      const message = element("#toast").textContent || "";
       if (message.includes("通关")) {
         results.push({
           level,
-          steps: el("#roundValue").textContent,
-          score: el("#scoreValue").textContent || el("#mseValue").textContent,
+          steps: element("#roundValue").textContent,
+          score: element("#scoreValue").textContent || element("#mseValue").textContent,
           message,
         });
         cleared = true;
@@ -109,30 +121,24 @@ function run(file, options) {
       results.push({
         level,
         fail: true,
-        steps: el("#roundValue").textContent,
-        score: el("#scoreValue").textContent || el("#mseValue").textContent,
-        message: el("#toast").textContent,
+        steps: element("#roundValue").textContent,
+        score: element("#scoreValue").textContent || element("#mseValue").textContent,
+        message: element("#toast").textContent,
       });
       break;
     }
-    if (level < options.levels - 1) el(options.next).listeners.click();
+    if (level < definition.smoke.levels - 1) {
+      const next = element(definition.smoke.next).listeners.click;
+      if (typeof next !== "function") throw new Error(`${definition.id}: next-level action is not bound`);
+      next();
+    }
   }
   return results;
 }
 
-const specs = [
-  ["app.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 4, maxSteps: 160 }],
-  ["kmeans.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 80, values: { "#moveRate": "1" } }],
-  ["linear.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 80, values: { "#learningRate": "0.25", "#batchSize": "3" } }],
-  ["logistic.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 80, values: { "#learningRate": "0.5", "#regularization": "0.01" } }],
-  ["nn.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 80, values: { "#learningRate": "0.35", "#epochsPerStep": "10" } }],
-  ["forest.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 80, values: { "#maxDepth": "3", "#featureRate": "1" } }],
-  ["svm.js", { step: "#stepBtn", next: "#nextLevelBtn", levels: 1, maxSteps: 120, values: { "#learningRate": "1", "#treeDepth": "2" } }],
-  ["tree.js", { step: "#bestBtn", next: "#nextLevelBtn", levels: 3, maxSteps: 20, values: { "#threshold": "0", "#maxDepth": "4" } }],
-];
-
-for (const [file, options] of specs) {
-  const result = run(file, options);
-  console.log(file, JSON.stringify(result));
+const definitions = loadManifest().filter((definition) => definition.smoke);
+for (const definition of definitions) {
+  const result = run(definition);
+  console.log(definition.id, JSON.stringify(result));
   if (result.some((item) => item.fail)) process.exitCode = 1;
 }

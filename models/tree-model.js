@@ -1,4 +1,7 @@
 (function registerTreeModel(global) {
+  const core = global.ModelCore;
+  if (!core) throw new Error("TreeModel requires model-core.js before tree-model.js");
+
   function pointsInLeaf(points, leaf) {
     return points.filter((point) => (
       point.x >= leaf.xMin && point.x <= leaf.xMax && point.y >= leaf.yMin && point.y <= leaf.yMax
@@ -6,13 +9,11 @@
   }
 
   function gini(points) {
-    if (!points.length) return 0;
-    const positive = points.filter((point) => point.label === 1).length / points.length;
-    return 1 - positive * positive - (1 - positive) * (1 - positive);
+    return core.gini(points, 1, -1);
   }
 
   function majority(points) {
-    return points.reduce((sum, point) => sum + point.label, 0) >= 0 ? 1 : -1;
+    return core.majority(points, 1, -1);
   }
 
   function leafFor(leaves, point) {
@@ -44,25 +45,20 @@
 
   function splitGain(points, leaf, axis, value) {
     const leafPoints = pointsInLeaf(points, leaf);
-    const left = leafPoints.filter((point) => point[axis] <= value);
-    const right = leafPoints.filter((point) => point[axis] > value);
-    if (!left.length || !right.length) return -Infinity;
-    const after = (gini(left) * left.length + gini(right) * right.length) / leafPoints.length;
-    return gini(leafPoints) - after;
+    return core.binarySplitGain(leafPoints, axis, value, 1, -1);
   }
 
   function bestSplit(points, leaf, defaultAxis, defaultValue) {
-    let best = { axis: defaultAxis, value: defaultValue, gain: -Infinity };
-    ["x", "y"].forEach((axis) => {
-      const values = pointsInLeaf(points, leaf).map((point) => point[axis]).sort((a, b) => a - b);
-      for (let index = 0; index < values.length - 1; index += 1) {
-        const value = (values[index] + values[index + 1]) / 2;
-        if (value <= leaf[`${axis}Min`] || value >= leaf[`${axis}Max`]) continue;
-        const gain = splitGain(points, leaf, axis, value);
-        if (gain > best.gain) best = { axis, value, gain };
-      }
+    const leafPoints = pointsInLeaf(points, leaf);
+    return core.bestBinarySplit(leafPoints, ["x", "y"], {
+      positiveLabel: 1,
+      negativeLabel: -1,
+      bounds: {
+        x: { min: leaf.xMin, max: leaf.xMax },
+        y: { min: leaf.yMin, max: leaf.yMax },
+      },
+      initialBest: { axis: defaultAxis, value: defaultValue, gain: -Infinity },
     });
-    return best;
   }
 
   global.TreeModel = { bestSplit, gini, leafFor, majority, metrics, pointsInLeaf, prediction, splitGain };

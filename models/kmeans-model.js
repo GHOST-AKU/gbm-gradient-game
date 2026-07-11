@@ -5,19 +5,25 @@
     return dx * dx + dy * dy;
   }
 
+  function nearestIndex(point, centroids) {
+    let best = 0;
+    let bestDistance = Infinity;
+    for (let index = 0; index < centroids.length; index += 1) {
+      const value = distance2(point, centroids[index]);
+      if (value < bestDistance) {
+        best = index;
+        bestDistance = value;
+      }
+    }
+    return best;
+  }
+
   function assign(points, centroids) {
-    return points.map((point) => {
-      let best = 0;
-      let bestDistance = Infinity;
-      centroids.forEach((centroid, index) => {
-        const value = distance2(point, centroid);
-        if (value < bestDistance) {
-          best = index;
-          bestDistance = value;
-        }
-      });
-      return best;
-    });
+    const assignments = new Array(points.length);
+    for (let index = 0; index < points.length; index += 1) {
+      assignments[index] = nearestIndex(points[index], centroids);
+    }
+    return assignments;
   }
 
   function metrics(points, assignments, centroids, baseline, round) {
@@ -43,11 +49,19 @@
 
   function step(points, centroids, rate) {
     const assignments = assign(points, centroids);
+    const counts = new Uint32Array(centroids.length);
+    const sumsX = new Float64Array(centroids.length);
+    const sumsY = new Float64Array(centroids.length);
+    for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
+      const cluster = assignments[pointIndex];
+      counts[cluster] += 1;
+      sumsX[cluster] += points[pointIndex].x;
+      sumsY[cluster] += points[pointIndex].y;
+    }
     const nextCentroids = centroids.map((centroid, index) => {
-      const members = points.filter((_, pointIndex) => assignments[pointIndex] === index);
-      if (!members.length) return { ...centroid, lastX: centroid.x, lastY: centroid.y };
-      const meanX = members.reduce((sum, point) => sum + point.x, 0) / members.length;
-      const meanY = members.reduce((sum, point) => sum + point.y, 0) / members.length;
+      if (!counts[index]) return { ...centroid, lastX: centroid.x, lastY: centroid.y };
+      const meanX = sumsX[index] / counts[index];
+      const meanY = sumsY[index] / counts[index];
       return {
         x: centroid.x + (meanX - centroid.x) * rate,
         y: centroid.y + (meanY - centroid.y) * rate,
@@ -58,5 +72,5 @@
     return { centroids: nextCentroids, assignments: assign(points, nextCentroids) };
   }
 
-  global.KMeansModel = { assign, distance2, metrics, step };
+  global.KMeansModel = { assign, distance2, metrics, nearestIndex, step };
 })(typeof window === "undefined" ? globalThis : window);

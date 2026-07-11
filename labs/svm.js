@@ -1,44 +1,45 @@
-const canvas = document.querySelector("#chart");
-const ctx = canvas.getContext("2d");
 const runtime = window.LabRuntime;
+const $ = runtime.query;
+const canvas = $("#chart");
+const ctx = canvas.getContext("2d");
 const modelMath = window.SvmModel;
-const mseValue = document.querySelector("#mseValue");
-const roundValue = document.querySelector("#roundValue");
-const progressFill = document.querySelector("#progressFill");
-const toast = document.querySelector("#toast");
-const roundLog = document.querySelector("#roundLog");
-const emptyLog = document.querySelector("#emptyLog");
-const logCard = document.querySelector(".log-card");
-const expandLogBtn = document.querySelector("#expandLogBtn");
-const logOverlay = document.querySelector("#logOverlay");
-const closeLogBtn = document.querySelector("#closeLogBtn");
-const fullRoundLog = document.querySelector("#fullRoundLog");
-const modalEmptyLog = document.querySelector("#modalEmptyLog");
-const modalRoundLabel = document.querySelector("#modalRoundLabel");
-const modalBestLabel = document.querySelector("#modalBestLabel");
-const modalLevelLabel = document.querySelector("#modalLevelLabel");
-const bestLabel = document.querySelector("#bestLabel");
-const targetLabel = document.querySelector("#targetLabel");
-const missionText = document.querySelector("#missionText");
-const levelSubtitle = document.querySelector("#levelSubtitle");
-const levelPicker = document.querySelector("#levelPicker");
-const viewPicker = document.querySelector("#viewPicker");
-const penaltyC = document.querySelector("#learningRate");
-const kernelPower = document.querySelector("#treeDepth");
-const rateLabel = document.querySelector("#rateLabel");
-const depthLabel = document.querySelector("#depthLabel");
-const stepBtn = document.querySelector("#stepBtn");
-const autoBtn = document.querySelector("#autoBtn");
-const undoBtn = document.querySelector("#undoBtn");
-const resetBtn = document.querySelector("#resetBtn");
-const nextLevelBtn = document.querySelector("#nextLevelBtn");
-const boundaryFormula = document.querySelector("#boundaryFormula");
-const supportCountLabel = document.querySelector("#supportCountLabel");
-const accuracyLabel = document.querySelector("#accuracyLabel");
-const violationLabel = document.querySelector("#violationLabel");
-const hingeLabel = document.querySelector("#hingeLabel");
-const biasLabel = document.querySelector("#biasLabel");
-const gammaLabel = document.querySelector("#gammaLabel");
+const mseValue = $("#mseValue");
+const roundValue = $("#roundValue");
+const progressFill = $("#progressFill");
+const toast = $("#toast");
+const bestLabel = $("#bestLabel");
+const targetLabel = $("#targetLabel");
+const missionText = $("#missionText");
+const levelSubtitle = $("#levelSubtitle");
+const levelPicker = $("#levelPicker");
+const viewPicker = $("#viewPicker");
+const penaltyC = $("#learningRate");
+const kernelPower = $("#treeDepth");
+const rateLabel = $("#rateLabel");
+const depthLabel = $("#depthLabel");
+const stepBtn = $("#stepBtn");
+const autoBtn = $("#autoBtn");
+const undoBtn = $("#undoBtn");
+const resetBtn = $("#resetBtn");
+const nextLevelBtn = $("#nextLevelBtn");
+const boundaryFormula = $("#boundaryFormula");
+const supportCountLabel = $("#supportCountLabel");
+const accuracyLabel = $("#accuracyLabel");
+const violationLabel = $("#violationLabel");
+const hingeLabel = $("#hingeLabel");
+const biasLabel = $("#biasLabel");
+const gammaLabel = $("#gammaLabel");
+const plane = runtime.createCartesianPlane(canvas);
+const history = runtime.createHistory();
+const fieldRenderer = runtime.createFieldRenderer(ctx);
+const scorerMemo = runtime.createMemo(() => modelMath.createScorer(
+  targetPoints,
+  state.alpha,
+  state.bias,
+  gamma(),
+  state.overfit > 0.05 ? (point) => noiseField(point) : null,
+));
+const kernelMatrixMemo = runtime.createMemo(() => modelMath.createKernelMatrix(targetPoints, gamma()));
 
 const levels = [
   {
@@ -104,13 +105,7 @@ const levels = [
 let currentLevel = 0;
 let targetPoints = [];
 let state;
-const autoTrainer = runtime.createAutoTrainer({
-  button: autoBtn,
-  idleLabel: "自动训练",
-  activeLabel: "暂停自动",
-  intervalMs: 760,
-  step: trainStep,
-});
+let controller;
 let activeView = "boundary";
 let activeViewNote = "边界视图：蓝色区域判为负类，绿色区域判为正类；亮线是当前决策边界。";
 
@@ -132,38 +127,35 @@ function setActiveViewNote(message, reset = false) {
 }
 
 function resetGame() {
-  stopAuto();
   const level = levels[currentLevel];
   targetPoints = makePoints(level);
   penaltyC.value = level.defaultC;
   kernelPower.value = level.defaultKernel;
+  history.clear();
   state = {
     alpha: targetPoints.map(() => 0),
     bias: 0,
     round: 0,
     bestScore: 0,
     lossHistory: [],
-    history: [],
-    logEntries: [],
     completedRound: null,
     overfit: 0,
+    version: 0,
   };
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "先观察样本，再训练第一轮。SVM 会寻找能最大化分类间隔的边界。";
   setActiveViewNote(viewNotes[activeView], true);
-  renderLogLists();
-  updatePickers();
-  draw();
+  controller.trainingLog.reset();
+  scorerMemo.invalidate();
+  kernelMatrixMemo.invalidate();
+  fieldRenderer.invalidate();
+  controller.render();
   updateHud();
 }
 
 function gamma() {
   return modelMath.gamma(kernelPower.value);
-}
-
-function kernel(a, b) {
-  return modelMath.kernel(a, b, gamma());
 }
 
 function noiseField(point, round = state.round) {
@@ -174,12 +166,10 @@ function noiseField(point, round = state.round) {
 }
 
 function scorePoint(point, alpha = state.alpha, bias = state.bias) {
-  let score = bias;
-  targetPoints.forEach((sample, index) => {
-    if (alpha[index] > 0.0001) score += alpha[index] * sample.label * kernel(point, sample);
-  });
-  if (state.overfit > 0.05) score += noiseField(point);
-  return score;
+  if (alpha === state.alpha && bias === state.bias) {
+    return scorerMemo.get(`${currentLevel}:${state.version}:${kernelPower.value}`)(point);
+  }
+  return modelMath.createScorer(targetPoints, alpha, bias, gamma())(point);
 }
 
 function classify(point) {
@@ -187,69 +177,74 @@ function classify(point) {
 }
 
 function metrics(alpha = state.alpha, bias = state.bias) {
-  return modelMath.metrics(targetPoints, alpha, bias, gamma(), state.overfit);
-}
-
-function scorePointWith(point, alpha, bias) {
-  return modelMath.scorePoint(targetPoints, point, alpha, bias, gamma());
+  const scorer = alpha === state.alpha && bias === state.bias
+    ? scorerMemo.get(`${currentLevel}:${state.version}:${kernelPower.value}`)
+    : undefined;
+  return modelMath.metrics(targetPoints, alpha, bias, gamma(), state.overfit, scorer);
 }
 
 function trainStep() {
   const before = metrics();
   const c = Number(penaltyC.value);
   const complexity = Number(kernelPower.value);
-  state.history.push({
+  history.push({
     alpha: [...state.alpha],
     bias: state.bias,
     round: state.round,
     bestScore: state.bestScore,
-    lossHistory: [...state.lossHistory],
-    logEntries: [...state.logEntries],
+    lossHistoryLength: state.lossHistory.length,
     completedRound: state.completedRound,
     overfit: state.overfit,
   });
 
-  const trained = modelMath.train(targetPoints, state.alpha, state.bias, c, complexity, state.round, state.overfit);
+  const trained = modelMath.train(
+    targetPoints,
+    state.alpha,
+    state.bias,
+    c,
+    complexity,
+    state.round,
+    state.overfit,
+    kernelMatrixMemo.get(`${currentLevel}:${kernelPower.value}`),
+  );
   state.alpha = trained.alpha;
   state.bias = trained.bias;
   state.overfit = trained.overfit;
   state.round = trained.round;
+  state.version += 1;
   const shouldOverfit = trained.shouldOverfit;
   const after = metrics();
   state.bestScore = Math.max(state.bestScore, after.score);
   state.lossHistory.push(after.objective);
 
   const supportText = `${after.supportCount} 个支持向量`;
-  prependLog(`第 ${state.round} 轮  SV ${after.supportCount}  hinge ${after.hinge.toFixed(2)}  得分 ${after.score.toFixed(2)}`);
+  controller.trainingLog.add(`第 ${state.round} 轮  SV ${after.supportCount}  hinge ${after.hinge.toFixed(2)}  得分 ${after.score.toFixed(2)}`);
 
   toast.textContent = `第 ${state.round} 轮：违反间隔的样本被加权，边界向最大间隔移动；当前 ${supportText}。`;
   if (shouldOverfit) {
     toast.textContent = `OVERFIT MODE：你把噪声也学进去了。C=${c.toFixed(1)} + 核复杂度 ${complexity} 让边界开始乱抖。`;
-    state.logEntries[0] = `过拟合警报  第 ${state.round} 轮  噪声抖动  得分 ${after.score.toFixed(2)}`;
-    renderLogLists();
-    if (roundLog?.firstElementChild) {
-      roundLog.firstElementChild.textContent = `过拟合警报  第 ${state.round} 轮  噪声抖动  得分 ${after.score.toFixed(2)}`;
-    }
+    controller.trainingLog.replaceLatest(`过拟合警报  第 ${state.round} 轮  噪声抖动  得分 ${after.score.toFixed(2)}`);
   }
 
   if (after.score >= levels[currentLevel].target && state.completedRound === null && !shouldOverfit) {
     state.completedRound = state.round;
   }
 
-  draw();
+  fieldRenderer.invalidate();
+  controller.render();
   updateHud();
 
   if (after.score >= levels[currentLevel].target && !shouldOverfit) {
     toast.textContent = `通关！目标间隔得分 ${levels[currentLevel].target.toFixed(2)}，你在第 ${state.completedRound} 轮达成。`;
-    stopAuto();
-  } else if (autoTrainer.isRunning() && state.round > 10 && Math.abs(before.objective - after.objective) < 0.002) {
+    controller.stopAuto();
+  } else if (controller.isAutoRunning() && state.round > 10 && Math.abs(before.objective - after.objective) < 0.002) {
     toast.textContent = "训练进入平台期：切到“间隔”或“向量”视图，看看是不是 C 太低或核复杂度不够。";
-    stopAuto();
+    controller.stopAuto();
   }
 }
 
 function undoStep() {
-  const previous = state.history.pop();
+  const previous = history.pop();
   if (!previous) {
     toast.textContent = "还没有可以撤回的训练轮次。";
     return;
@@ -258,66 +253,15 @@ function undoStep() {
   state.bias = previous.bias;
   state.round = previous.round;
   state.bestScore = previous.bestScore;
-  state.lossHistory = previous.lossHistory;
-  state.logEntries = previous.logEntries;
+  state.lossHistory.length = previous.lossHistoryLength;
   state.completedRound = previous.completedRound;
   state.overfit = previous.overfit;
-  renderLogLists();
+  state.version += 1;
+  controller.trainingLog.removeLatest();
   toast.textContent = "撤回上一轮训练，边界回到上一轮状态。";
-  draw();
+  fieldRenderer.invalidate();
+  controller.render();
   updateHud();
-}
-
-function prependLog(message) {
-  state.logEntries.unshift(message);
-  renderLogLists();
-}
-
-function renderLogLists() {
-  const hasLogs = state.logEntries.length > 0;
-  if (logCard) logCard.classList.toggle("has-logs", hasLogs);
-  if (roundLog) roundLog.innerHTML = "";
-  fullRoundLog.innerHTML = "";
-
-  if (roundLog) {
-    state.logEntries.slice(0, 1).forEach((message) => {
-      const item = document.createElement("li");
-      item.textContent = message;
-      roundLog.append(item);
-    });
-    roundLog.hidden = !hasLogs;
-  }
-
-  state.logEntries.forEach((message) => {
-    const item = document.createElement("li");
-    item.textContent = message;
-    fullRoundLog.append(item);
-  });
-
-  modalEmptyLog.hidden = hasLogs;
-  if (emptyLog) emptyLog.hidden = hasLogs;
-  fullRoundLog.hidden = !hasLogs;
-}
-
-function updateLogModalStats() {
-  const level = levels[currentLevel];
-  modalRoundLabel.textContent = `轮次 ${state.round}`;
-  modalBestLabel.textContent = state.round ? `最佳得分 ${state.bestScore.toFixed(2)}` : "最佳 --";
-  modalLevelLabel.textContent = `关卡 ${level.shortName} / 目标 ${level.target.toFixed(2)}`;
-}
-
-function openLogModal() {
-  renderLogLists();
-  updateLogModalStats();
-  logOverlay.hidden = false;
-  document.body.classList.add("modal-open");
-  closeLogBtn.focus();
-}
-
-function closeLogModal() {
-  logOverlay.hidden = true;
-  document.body.classList.remove("modal-open");
-  expandLogBtn.focus();
 }
 
 function updateHud() {
@@ -333,7 +277,6 @@ function updateHud() {
   depthLabel.textContent = `${kernelPower.value} 级`;
   updateBoundaryData(result);
   document.body.classList.toggle("overfit-mode", state.overfit > 0.15);
-  if (!logOverlay.hidden) updateLogModalStats();
 }
 
 function updateBoundaryData(result = metrics()) {
@@ -347,30 +290,12 @@ function updateBoundaryData(result = metrics()) {
   gammaLabel.textContent = gamma().toFixed(2);
 }
 
-function stopAuto() { autoTrainer.stop(); }
-function toggleAuto() { autoTrainer.toggle(); }
-
-function nextLevel() {
-  currentLevel = (currentLevel + 1) % levels.length;
-  resetGame();
-}
-
 function setView(view) {
   activeView = view;
-  runtime.setActiveSegment(viewPicker, view);
   toast.textContent = viewNotes[view];
   setActiveViewNote(viewNotes[view], true);
-  draw();
+  controller.render();
 }
-
-function updatePickers() {
-  runtime.renderChoicePicker(levelPicker, levels, currentLevel, (index) => {
-    currentLevel = index;
-    resetGame();
-  });
-}
-
-const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
 
 function chartBounds() {
   const rect = canvas.getBoundingClientRect();
@@ -383,18 +308,15 @@ function chartBounds() {
 }
 
 function px(point, bounds) {
-  return bounds.left + ((point.x + 1) / 2) * bounds.width;
+  return plane.toX(point.x, bounds);
 }
 
 function py(point, bounds) {
-  return bounds.bottom - ((point.y + 1) / 2) * bounds.height;
+  return plane.toY(point.y, bounds);
 }
 
 function pointFromCanvas(x, y, bounds) {
-  return {
-    x: ((x - bounds.left) / bounds.width) * 2 - 1,
-    y: ((bounds.bottom - y) / bounds.height) * 2 - 1,
-  };
+  return plane.fromCanvas(x, y, bounds);
 }
 
 function draw() {
@@ -420,94 +342,54 @@ function drawBackdrop(rect, bounds) {
 }
 
 function drawGrid(bounds) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(139,211,255,0.14)";
-  ctx.lineWidth = 2;
-  for (let i = 0; i <= 4; i += 1) {
-    const y = Math.round(bounds.top + (bounds.height / 4) * i) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(bounds.left, y);
-    ctx.lineTo(bounds.right, y);
-    ctx.stroke();
-  }
-  for (let i = 0; i <= 8; i += 1) {
-    const x = Math.round(bounds.left + (bounds.width / 8) * i) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(x, bounds.top);
-    ctx.lineTo(x, bounds.bottom);
-    ctx.stroke();
-  }
-  ctx.restore();
+  runtime.drawGrid(ctx, bounds);
 }
 
 function drawAxes(bounds, view) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,243,214,0.58)";
-  ctx.fillStyle = "rgba(255,243,214,0.72)";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(bounds.left, bounds.top);
-  ctx.lineTo(bounds.left, bounds.bottom);
-  ctx.lineTo(bounds.right, bounds.bottom);
-  ctx.stroke();
-  ctx.font = "12px Courier New, Microsoft YaHei, monospace";
-  ctx.textAlign = "right";
-  ctx.textBaseline = "bottom";
-  ctx.fillText(view === "loss" ? "训练轮次" : "特征 x1", bounds.right - 8, bounds.bottom - 7);
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText(view === "loss" ? "目标函数" : "特征 x2", bounds.left + 10, bounds.top + 10);
-  ctx.restore();
+  runtime.drawAxes(ctx, bounds, {
+    xLabel: view === "loss" ? "训练轮次" : "特征 x1",
+    yLabel: view === "loss" ? "目标函数" : "特征 x2",
+    xOffset: 7,
+    yOffset: 10,
+    xBaseline: "bottom",
+    yBaseline: "top",
+  });
 }
 
 function drawDecisionField(bounds, view) {
   if (state.round === 0 && state.alpha.every((value) => value < 0.0001)) {
     return;
   }
-  const cols = 46;
-  const rows = 30;
-  const cellW = bounds.width / cols;
-  const cellH = bounds.height / rows;
-  ctx.save();
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const x = bounds.left + col * cellW + cellW / 2;
-      const y = bounds.top + row * cellH + cellH / 2;
-      const score = scorePoint(pointFromCanvas(x, y, bounds));
-      const alpha = view === "boundary" ? 0.24 : 0.15;
-      ctx.fillStyle = score >= 0 ? `rgba(34,240,164,${alpha})` : `rgba(59,215,255,${alpha})`;
-      ctx.fillRect(bounds.left + col * cellW, bounds.top + row * cellH, Math.ceil(cellW), Math.ceil(cellH));
-      if (Math.abs(score) < 0.07) {
-        ctx.fillStyle = "#fff3d6";
-        ctx.fillRect(bounds.left + col * cellW, bounds.top + row * cellH, Math.ceil(cellW), Math.ceil(cellH));
-      }
-    }
-  }
+  const alpha = view === "boundary" ? 0.24 : 0.15;
+  fieldRenderer.draw({
+    key: `svm:${currentLevel}:${state.version}:${kernelPower.value}`,
+    colorKey: `decision:${view}`,
+    bounds,
+    columns: 50,
+    rows: 32,
+    sample: (x, y) => scorePoint(plane.fromUnit(x, y)),
+    color: (score) => {
+      if (Math.abs(score) < 0.07) return [255, 243, 214, 255];
+      return score >= 0 ? [34, 240, 164, Math.round(alpha * 255)] : [59, 215, 255, Math.round(alpha * 255)];
+    },
+  });
   if (state.overfit > 0.15) drawOverfitGlitch(bounds);
-  ctx.restore();
 }
 
 function drawMarginBand(bounds) {
-  const cols = 50;
-  const rows = 32;
-  const cellW = bounds.width / cols;
-  const cellH = bounds.height / rows;
-  ctx.save();
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const x = bounds.left + col * cellW + cellW / 2;
-      const y = bounds.top + row * cellH + cellH / 2;
-      const score = scorePoint(pointFromCanvas(x, y, bounds));
-      if (Math.abs(Math.abs(score) - 1) < 0.08) {
-        ctx.fillStyle = "#22f0a4";
-        ctx.fillRect(bounds.left + col * cellW, bounds.top + row * cellH, Math.ceil(cellW), Math.ceil(cellH));
-      } else if (Math.abs(score) < 1) {
-        ctx.fillStyle = "rgba(255,212,71,0.11)";
-        ctx.fillRect(bounds.left + col * cellW, bounds.top + row * cellH, Math.ceil(cellW), Math.ceil(cellH));
-      }
-    }
-  }
-  ctx.restore();
+  fieldRenderer.draw({
+    key: `svm:${currentLevel}:${state.version}:${kernelPower.value}`,
+    colorKey: "margin",
+    bounds,
+    columns: 50,
+    rows: 32,
+    sample: (x, y) => scorePoint(plane.fromUnit(x, y)),
+    color: (score) => {
+      if (Math.abs(Math.abs(score) - 1) < 0.08) return [34, 240, 164, 255];
+      if (Math.abs(score) < 1) return [255, 212, 71, 28];
+      return [0, 0, 0, 0];
+    },
+  });
   setActiveViewNote("间隔带越宽越稳；落在带内的样本会继续影响边界。");
 }
 
@@ -575,45 +457,43 @@ function drawLoss(bounds) {
   const values = state.lossHistory.length ? state.lossHistory : [metrics().objective];
   const max = Math.max(...values, 1.2);
   const min = Math.min(...values, 0);
-  const toX = (index) => bounds.left + (values.length <= 1 ? 0 : (index / (values.length - 1)) * bounds.width);
-  const toY = (value) => bounds.bottom - ((value - min) / Math.max(max - min, 0.0001)) * bounds.height;
   ctx.save();
-  ctx.strokeStyle = "#3bd7ff";
-  ctx.lineWidth = 5;
-  ctx.lineJoin = "miter";
-  ctx.beginPath();
-  values.forEach((value, index) => {
-    const x = toX(index);
-    const y = toY(value);
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-  values.forEach((value, index) => {
-    ctx.fillStyle = "#ffd447";
-    ctx.fillRect(toX(index) - 4, toY(value) - 4, 8, 8);
+  runtime.drawSeries(ctx, values, bounds, {
+    min,
+    max,
+    color: "#3bd7ff",
+    lineWidth: 5,
+    lineJoin: "miter",
+    pointColor: "#ffd447",
+    pointSize: 8,
   });
   setActiveViewNote("hinge loss + 正则项：下降说明边界还在变好。");
   ctx.restore();
 }
 
-penaltyC.addEventListener("input", updateHud);
-kernelPower.addEventListener("input", updateHud);
-stepBtn.addEventListener("click", trainStep);
-autoBtn.addEventListener("click", toggleAuto);
-undoBtn.addEventListener("click", undoStep);
-resetBtn.addEventListener("click", resetGame);
-nextLevelBtn.addEventListener("click", nextLevel);
-expandLogBtn.addEventListener("click", openLogModal);
-closeLogBtn.addEventListener("click", closeLogModal);
-logOverlay.addEventListener("click", (event) => {
-  if (event.target === logOverlay) closeLogModal();
+controller = runtime.createLabController({
+  levels,
+  getLevelIndex: () => currentLevel,
+  setLevelIndex: (index) => { currentLevel = index; },
+  reset: resetGame,
+  draw,
+  canvas,
+  context: ctx,
+  levelPicker,
+  viewPicker,
+  setView,
+  auto: { button: autoBtn, idleLabel: "自动训练", activeLabel: "暂停自动", intervalMs: 760, step: trainStep },
+  actions: {
+    step: trainStep,
+    stepButton: stepBtn,
+    undo: undoStep,
+    undoButton: undoBtn,
+    resetButton: resetBtn,
+    nextButton: nextLevelBtn,
+  },
+  inputs: [
+    { element: penaltyC, handler: () => { fieldRenderer.invalidate(); updateHud(); controller.render(); } },
+    { element: kernelPower, handler: () => { fieldRenderer.invalidate(); updateHud(); controller.render(); } },
+  ],
 });
-window.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !logOverlay.hidden) closeLogModal();
-});
-runtime.bindSegmentedPicker(viewPicker, setView);
-window.addEventListener("resize", fitCanvas);
-
-resetGame();
-requestAnimationFrame(fitCanvas);
+controller.start();

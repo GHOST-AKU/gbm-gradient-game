@@ -1,36 +1,39 @@
-const canvas = document.querySelector("#chart");
-const ctx = canvas.getContext("2d");
 const runtime = window.LabRuntime;
+const $ = runtime.query;
+const canvas = $("#chart");
+const ctx = canvas.getContext("2d");
 const modelMath = window.KMeansModel;
-const scoreValue = document.querySelector("#mseValue");
-const roundValue = document.querySelector("#roundValue");
-const progressFill = document.querySelector("#progressFill");
-const toast = document.querySelector("#toast");
-const latestText = document.querySelector("#latestText");
-const bestLabel = document.querySelector("#bestLabel");
-const targetLabel = document.querySelector("#targetLabel");
-const missionText = document.querySelector("#missionText");
-const levelSubtitle = document.querySelector("#levelSubtitle");
-const levelPicker = document.querySelector("#levelPicker");
-const viewPicker = document.querySelector("#viewPicker");
-const clusterCount = document.querySelector("#clusterCount");
-const clusterLabel = document.querySelector("#clusterLabel");
-const moveRate = document.querySelector("#moveRate");
-const rateLabel = document.querySelector("#rateLabel");
-const stepBtn = document.querySelector("#stepBtn");
-const autoBtn = document.querySelector("#autoBtn");
-const undoBtn = document.querySelector("#undoBtn");
-const resetBtn = document.querySelector("#resetBtn");
-const nextLevelBtn = document.querySelector("#nextLevelBtn");
-const formulaLabel = document.querySelector("#formulaLabel");
-const inertiaLabel = document.querySelector("#inertiaLabel");
-const movementLabel = document.querySelector("#movementLabel");
-const emptyLabel = document.querySelector("#emptyLabel");
-const stableLabel = document.querySelector("#stableLabel");
-const kLabel = document.querySelector("#kLabel");
-const bestScoreLabel = document.querySelector("#bestScoreLabel");
+const modelCore = window.ModelCore;
+const scoreValue = $("#mseValue");
+const roundValue = $("#roundValue");
+const progressFill = $("#progressFill");
+const toast = $("#toast");
+const latestText = $("#latestText");
+const bestLabel = $("#bestLabel");
+const targetLabel = $("#targetLabel");
+const missionText = $("#missionText");
+const levelSubtitle = $("#levelSubtitle");
+const levelPicker = $("#levelPicker");
+const viewPicker = $("#viewPicker");
+const clusterCount = $("#clusterCount");
+const clusterLabel = $("#clusterLabel");
+const moveRate = $("#moveRate");
+const rateLabel = $("#rateLabel");
+const stepBtn = $("#stepBtn");
+const autoBtn = $("#autoBtn");
+const undoBtn = $("#undoBtn");
+const resetBtn = $("#resetBtn");
+const nextLevelBtn = $("#nextLevelBtn");
+const formulaLabel = $("#formulaLabel");
+const inertiaLabel = $("#inertiaLabel");
+const movementLabel = $("#movementLabel");
+const emptyLabel = $("#emptyLabel");
+const stableLabel = $("#stableLabel");
+const kLabel = $("#kLabel");
+const bestScoreLabel = $("#bestScoreLabel");
 
 const colors = ["#22f0a4", "#3bd7ff", "#ffd447", "#ff7a66", "#b778ff"];
+const colorRgb = [[34, 240, 164], [59, 215, 255], [255, 212, 71], [255, 122, 102], [183, 120, 255]];
 
 const levels = [
   {
@@ -82,18 +85,15 @@ const levels = [
 let currentLevel = 0;
 let state;
 let activeView = "territory";
-const trainingLog = runtime.createTrainingLog();
-const autoTrainer = runtime.createAutoTrainer({
-  button: autoBtn,
-  idleLabel: "自动迭代",
-  activeLabel: "暂停自动",
-  intervalMs: 850,
-  step,
-});
+let controller;
+let modelVersion = 0;
+const history = runtime.createHistory();
+const plane = runtime.createCartesianPlane(canvas);
+const fieldRenderer = runtime.createFieldRenderer(ctx);
 let dragging = null;
 
 function clamp(value, min = -0.96, max = 0.96) {
-  return Math.max(min, Math.min(max, value));
+  return modelCore.clamp(value, min, max);
 }
 
 function distance2(a, b) {
@@ -121,8 +121,9 @@ function metrics(assignments = state.assignments, centroids = state.centroids) {
 }
 
 function resetGame() {
-  stopAuto();
   const level = levels[currentLevel];
+  history.clear();
+  modelVersion += 1;
   clusterCount.value = level.k;
   const points = makePoints(level);
   const centroids = makeCentroids(level, level.k);
@@ -134,28 +135,33 @@ function resetGame() {
     baseline: 1,
     round: 0,
     bestScore: 0,
-    history: [],
     inertiaHistory: [],
+    revision: 0,
   };
   state.baseline = Math.max(0.08, metrics(assignments, centroids).inertia * level.baselineScale);
   missionText.textContent = level.description;
   levelSubtitle.textContent = level.name;
   toast.textContent = "拖动质心，或让 K-Means 自动完成“分配 -> 移动”的循环。";
   latestText.textContent = "未迭代：每个样本会归到最近的质心旗下。";
-  trainingLog.reset();
-  updatePickers();
-  draw();
+  controller.trainingLog.reset();
+  fieldRenderer.invalidate();
+  controller.render();
   updateHud();
 }
 
-function step() {
-  state.history.push({
+function saveSnapshot(logAdded) {
+  history.push({
     centroids: state.centroids.map((centroid) => ({ ...centroid })),
     assignments: [...state.assignments],
     round: state.round,
     bestScore: state.bestScore,
-    inertiaHistory: [...state.inertiaHistory],
+    inertiaHistoryLength: state.inertiaHistory.length,
+    logAdded,
   });
+}
+
+function step() {
+  saveSnapshot(true);
 
   const before = metrics();
   const rate = Number(moveRate.value);
@@ -163,25 +169,25 @@ function step() {
   state.centroids = next.centroids;
   state.assignments = next.assignments;
   state.round += 1;
+  state.revision += 1;
   const after = metrics();
   state.bestScore = Math.max(state.bestScore, after.score);
   state.inertiaHistory.push(after.inertia);
   const delta = before.inertia - after.inertia;
   toast.textContent = `第 ${state.round} 轮：样本重新站队，质心向各自簇中心移动，距离下降 ${Math.max(0, delta).toFixed(3)}。`;
   latestText.textContent = `第 ${state.round} 轮  簇内距离 ${after.inertia.toFixed(3)}  移动 ${after.movement.toFixed(2)}  得分 ${after.score.toFixed(2)}`;
-  trainingLog.add(latestText.textContent);
-  draw();
+  controller.trainingLog.add(latestText.textContent);
+  controller.render();
   updateHud();
   if (after.score >= levels[currentLevel].target && after.movement < 0.035) {
     toast.textContent = `通关！质心基本稳定，聚合得分 ${after.score.toFixed(2)}。`;
     latestText.textContent = toast.textContent;
-    stopAuto();
+    controller.stopAuto();
   }
 }
 
 function undo() {
-  const currentRound = state.round;
-  const previous = state.history.pop();
+  const previous = history.pop();
   if (!previous) {
     toast.textContent = "还没有可以撤回的迭代。";
     return;
@@ -190,11 +196,12 @@ function undo() {
   state.assignments = previous.assignments;
   state.round = previous.round;
   state.bestScore = previous.bestScore;
-  state.inertiaHistory = previous.inertiaHistory;
+  state.inertiaHistory.length = previous.inertiaHistoryLength;
+  state.revision += 1;
   toast.textContent = "撤回一步，质心回到上一轮位置。";
   latestText.textContent = state.round ? `回到第 ${state.round} 轮。` : "未迭代：每个样本会归到最近的质心旗下。";
-  if (state.round < currentRound) trainingLog.removeLatest();
-  draw();
+  if (previous.logAdded) controller.trainingLog.removeLatest();
+  controller.render();
   updateHud();
 }
 
@@ -217,12 +224,8 @@ function updateHud() {
   bestScoreLabel.textContent = state.bestScore.toFixed(2);
 }
 
-function stopAuto() { autoTrainer.stop(); }
-function toggleAuto() { autoTrainer.toggle(); }
-
 function setView(view) {
   activeView = view;
-  runtime.setActiveSegment(viewPicker, view);
   const labels = {
     territory: "地盘视图：背景颜色表示每个位置会归属哪个质心。",
     distance: "距离视图：细线越短，样本离自己的质心越近。",
@@ -231,38 +234,23 @@ function setView(view) {
   };
   toast.textContent = labels[view];
   runtime.setShapeContext(labels[view]);
-  draw();
+  controller.render();
 }
-
-function updatePickers() {
-  runtime.renderChoicePicker(levelPicker, levels, currentLevel, (index) => {
-    currentLevel = index;
-    resetGame();
-  });
-}
-
-function nextLevel() {
-  currentLevel = (currentLevel + 1) % levels.length;
-  resetGame();
-}
-
-const fitCanvas = runtime.makeCanvasFitter(canvas, ctx, draw);
 
 function chartBounds() {
-  const rect = canvas.getBoundingClientRect();
-  return { left: 4, top: 4, right: rect.width - 6, bottom: rect.height - 10, width: rect.width - 10, height: rect.height - 14 };
+  return plane.bounds();
 }
 
 function px(point, bounds) {
-  return bounds.left + ((point.x + 1) / 2) * bounds.width;
+  return plane.toX(point.x, bounds);
 }
 
 function py(point, bounds) {
-  return bounds.bottom - ((point.y + 1) / 2) * bounds.height;
+  return plane.toY(point.y, bounds);
 }
 
 function pointFromCanvas(x, y, bounds) {
-  return { x: ((x - bounds.left) / bounds.width) * 2 - 1, y: ((bounds.bottom - y) / bounds.height) * 2 - 1 };
+  return plane.fromCanvas(x, y, bounds);
 }
 
 function draw() {
@@ -282,44 +270,22 @@ function draw() {
 }
 
 function drawGrid(bounds) {
-  ctx.save();
   ctx.fillStyle = "rgba(7,16,28,0.32)";
   ctx.fillRect(bounds.left, bounds.top, bounds.width, bounds.height);
-  ctx.strokeStyle = "rgba(139,211,255,0.14)";
-  ctx.lineWidth = 2;
-  for (let i = 0; i <= 8; i += 1) {
-    const x = Math.round(bounds.left + (bounds.width / 8) * i) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(x, bounds.top);
-    ctx.lineTo(x, bounds.bottom);
-    ctx.stroke();
-  }
-  for (let i = 0; i <= 4; i += 1) {
-    const y = Math.round(bounds.top + (bounds.height / 4) * i) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(bounds.left, y);
-    ctx.lineTo(bounds.right, y);
-    ctx.stroke();
-  }
-  ctx.restore();
+  runtime.drawGrid(ctx, bounds);
 }
 
 function drawTerritory(bounds) {
   if (activeView !== "territory") return;
-  const cols = 44;
-  const rows = 28;
-  const cellW = bounds.width / cols;
-  const cellH = bounds.height / rows;
-  ctx.save();
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const point = pointFromCanvas(bounds.left + col * cellW + cellW / 2, bounds.top + row * cellH + cellH / 2, bounds);
-      const cluster = assign([point], state.centroids)[0];
-      ctx.fillStyle = `${colors[cluster]}24`;
-      ctx.fillRect(bounds.left + col * cellW, bounds.top + row * cellH, Math.ceil(cellW), Math.ceil(cellH));
-    }
-  }
-  ctx.restore();
+  fieldRenderer.draw({
+    key: `kmeans:${modelVersion}:${state.revision}`,
+    colorKey: "territory",
+    bounds,
+    columns: 44,
+    rows: 28,
+    sample: (x, y) => modelMath.nearestIndex(plane.fromUnit(x, y), state.centroids),
+    color: (cluster) => [...colorRgb[cluster], 36],
+  });
 }
 
 function drawAssignments(bounds) {
@@ -376,38 +342,14 @@ function drawCentroids(bounds) {
 }
 
 function drawAxes(bounds) {
-  ctx.save();
-  ctx.strokeStyle = "rgba(255,243,214,0.56)";
-  ctx.fillStyle = "rgba(255,243,214,0.72)";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(bounds.left, bounds.top);
-  ctx.lineTo(bounds.left, bounds.bottom);
-  ctx.lineTo(bounds.right, bounds.bottom);
-  ctx.stroke();
-  ctx.font = "12px Courier New, Microsoft YaHei, monospace";
-  ctx.fillText("特征 x2", bounds.left + 10, bounds.top + 18);
-  ctx.textAlign = "right";
-  ctx.fillText("特征 x1", bounds.right - 8, bounds.bottom - 10);
-  ctx.restore();
+  runtime.drawAxes(ctx, bounds, { strokeColor: "rgba(255,243,214,0.56)" });
 }
 
 function drawLoss(bounds) {
   drawGrid(bounds);
   const values = state.inertiaHistory.length ? state.inertiaHistory : [metrics().inertia];
   const max = Math.max(...values, state.baseline / levels[currentLevel].baselineScale);
-  ctx.save();
-  ctx.strokeStyle = "#22f0a4";
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  values.forEach((value, index) => {
-    const x = bounds.left + (index / Math.max(1, values.length - 1)) * bounds.width;
-    const y = bounds.bottom - (1 - value / max) * bounds.height;
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-  ctx.stroke();
-  ctx.restore();
+  runtime.drawSeries(ctx, values, bounds, { min: 0, max, color: "#22f0a4", lineWidth: 5 });
 }
 
 function nearestCentroidAt(clientX, clientY) {
@@ -429,21 +371,15 @@ function nearestCentroidAt(clientX, clientY) {
   return best;
 }
 
-canvas.addEventListener("pointerdown", (event) => {
+function handlePointerDown(event) {
   const nearest = nearestCentroidAt(event.clientX, event.clientY);
   if (nearest === null) return;
   dragging = nearest;
-  state.history.push({
-    centroids: state.centroids.map((centroid) => ({ ...centroid })),
-    assignments: [...state.assignments],
-    round: state.round,
-    bestScore: state.bestScore,
-    inertiaHistory: [...state.inertiaHistory],
-  });
+  saveSnapshot(false);
   canvas.setPointerCapture(event.pointerId);
-});
+}
 
-canvas.addEventListener("pointermove", (event) => {
+function handlePointerMove(event) {
   if (dragging === null) return;
   const rect = canvas.getBoundingClientRect();
   const bounds = chartBounds();
@@ -454,34 +390,60 @@ canvas.addEventListener("pointermove", (event) => {
   centroid.x = clamp(point.x);
   centroid.y = clamp(point.y);
   state.assignments = assign();
+  state.revision += 1;
   toast.textContent = `拖动质心 ${dragging + 1}：地盘实时重新分配。`;
-  draw();
+  controller.render();
   updateHud();
-});
+}
 
-canvas.addEventListener("pointerup", () => {
+function handlePointerUp() {
   dragging = null;
-});
+}
 
-clusterCount.addEventListener("input", () => {
+function handleClusterCount() {
   const level = levels[currentLevel];
+  history.clear();
   state.centroids = makeCentroids(level, Number(clusterCount.value));
   state.assignments = assign();
   state.round = 0;
   state.inertiaHistory = [];
+  state.bestScore = 0;
+  state.revision += 1;
   latestText.textContent = "K 值已改变：等待新一轮迭代。";
-  trainingLog.reset();
+  controller.trainingLog.reset();
   updateHud();
-  draw();
-});
-moveRate.addEventListener("input", updateHud);
-stepBtn.addEventListener("click", step);
-autoBtn.addEventListener("click", toggleAuto);
-undoBtn.addEventListener("click", undo);
-resetBtn.addEventListener("click", resetGame);
-nextLevelBtn.addEventListener("click", nextLevel);
-runtime.bindSegmentedPicker(viewPicker, setView);
-window.addEventListener("resize", fitCanvas);
+  controller.render();
+}
 
-resetGame();
-requestAnimationFrame(fitCanvas);
+controller = runtime.createLabController({
+  levels,
+  levelPicker,
+  viewPicker,
+  getLevelIndex: () => currentLevel,
+  setLevelIndex: (index) => { currentLevel = index; },
+  reset: resetGame,
+  draw,
+  canvas,
+  context: ctx,
+  setView,
+  auto: { button: autoBtn, idleLabel: "自动迭代", activeLabel: "暂停自动", intervalMs: 850, step },
+  actions: {
+    stepButton: stepBtn,
+    step,
+    undoButton: undoBtn,
+    undo,
+    resetButton: resetBtn,
+    nextButton: nextLevelBtn,
+  },
+  inputs: [
+    { element: moveRate, handler: updateHud },
+  ],
+  bindings: [
+    { element: clusterCount, event: "input", handler: handleClusterCount },
+    { element: canvas, event: "pointerdown", handler: handlePointerDown },
+    { element: canvas, event: "pointermove", handler: handlePointerMove },
+    { element: canvas, event: "pointerup", handler: handlePointerUp },
+    { element: canvas, event: "pointercancel", handler: handlePointerUp },
+  ],
+});
+controller.start();

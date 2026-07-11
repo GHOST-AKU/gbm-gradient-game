@@ -1,7 +1,7 @@
 (function registerNeuralNetworkModel(global) {
-  function sigmoid(value) {
-    return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, value))));
-  }
+  const core = global.ModelCore;
+  if (!core) throw new Error("NeuralNetworkModel requires model-core.js before nn-model.js");
+  const { sigmoid } = core;
 
   function makeNet() {
     return {
@@ -25,19 +25,20 @@
     return { hidden, p: sigmoid(z), z };
   }
 
+  function probability(point, net) {
+    let z = net.outB;
+    for (let index = 0; index < net.h.length; index += 1) {
+      const unit = net.h[index];
+      z += Math.tanh(unit.wx * point.x + unit.wy * point.y + unit.b) * unit.v;
+    }
+    return sigmoid(z);
+  }
+
   function metrics(points, net) {
-    let loss = 0;
-    let correct = 0;
-    let confidence = 0;
-    points.forEach((point) => {
-      const p = Math.min(0.999, Math.max(0.001, forward(point, net).p));
-      loss += -(point.label * Math.log(p) + (1 - point.label) * Math.log(1 - p));
-      if ((p >= 0.5 ? 1 : 0) === point.label) correct += 1;
-      confidence += Math.abs(p - 0.5) * 2;
-    });
-    loss /= points.length;
-    const accuracy = correct / points.length;
-    confidence /= points.length;
+    const { loss, accuracy, confidence } = core.binaryClassificationStats(
+      points,
+      (point) => probability(point, net),
+    );
     const score = Math.max(0, Math.min(0.99, accuracy * 0.74 + confidence * 0.26 - Math.max(0, loss - 0.25) * 0.05));
     return { loss, accuracy, confidence, score };
   }
@@ -46,7 +47,7 @@
     let bestIndex = 0;
     let bestError = -1;
     points.forEach((point, index) => {
-      const error = Math.abs(forward(point, net).p - point.label);
+      const error = Math.abs(probability(point, net) - point.label);
       if (error > bestError) {
         bestError = error;
         bestIndex = index;
@@ -82,5 +83,5 @@
     return next;
   }
 
-  global.NeuralNetworkModel = { cloneNet, forward, hardestPointIndex, makeNet, metrics, sigmoid, train };
+  global.NeuralNetworkModel = { cloneNet, forward, hardestPointIndex, makeNet, metrics, probability, sigmoid, train };
 })(typeof window === "undefined" ? globalThis : window);
